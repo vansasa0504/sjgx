@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>数据目录</h1><el-input v-model="keyword" placeholder="检索关键词"/><div class="grid"><div class="metric" v-for="item in filtered" :key="item">{{ item }}</div></div></section></template>
+<script setup lang="ts">import { computed, ref } from 'vue'; const keyword = ref(''); const items = ['个人征信', '工商司法', '运营商画像']; const filtered = computed(() => items.filter(i => i.includes(keyword.value)))</script>

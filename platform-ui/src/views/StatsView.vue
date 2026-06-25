@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>统计监管</h1><div class="grid"><div class="metric">调用量 {{ summary.invokeCount }}</div><div class="metric">成功率 {{ summary.successRate }}</div><div class="metric">监管报表 3</div></div><el-button>导出报表</el-button></section></template>
+<script setup lang="ts">import { reactive } from 'vue'; const summary = reactive({ invokeCount: 12800, successRate: '99.2%' })</script>

@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>消费方管理</h1><el-table :data="rows"><el-table-column prop="name" label="消费方"/><el-table-column prop="quota" label="日配额"/><el-table-column label="操作"><template #default><el-button size="small">配置配额</el-button></template></el-table-column></el-table></section></template>
+<script setup lang="ts">const rows = [{ name: '风控系统', quota: 50000 }, { name: '营销系统', quota: 20000 }]</script>

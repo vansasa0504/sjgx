@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>合作方管理</h1><el-table :data="rows"><el-table-column prop="name" label="合作方"/><el-table-column prop="status" label="状态"/><el-table-column label="操作"><template #default><el-button size="small">状态流转</el-button></template></el-table-column></el-table></section></template>
+<script setup lang="ts">const rows = [{ name: '政务数据合作方', status: 'ADMITTED' }, { name: '征信服务商', status: 'RATING' }]</script>

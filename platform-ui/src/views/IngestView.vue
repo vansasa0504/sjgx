@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>接入任务</h1><el-button type="primary">创建任务</el-button><el-table :data="rows"><el-table-column prop="name" label="任务"/><el-table-column prop="protocol" label="协议"/><el-table-column prop="status" label="状态"/></el-table></section></template>
+<script setup lang="ts">const rows = [{ name: '工商数据同步', protocol: 'HTTP', status: 'ONLINE' }, { name: '文件批量接入', protocol: 'SFTP', status: 'TESTING' }]</script>

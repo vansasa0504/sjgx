@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>数据服务</h1><el-table :data="rows"><el-table-column prop="code" label="服务编码"/><el-table-column prop="version" label="版本"/><el-table-column label="操作"><template #default><el-button size="small" type="success">发布</el-button></template></el-table-column></el-table></section></template>
+<script setup lang="ts">const rows = [{ code: 'svc-credit', version: 'v1' }, { code: 'svc-risk', version: 'v2' }]</script>

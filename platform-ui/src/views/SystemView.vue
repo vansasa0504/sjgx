@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>系统管理</h1><el-tabs><el-tab-pane label="用户">管理员</el-tab-pane><el-tab-pane label="角色">平台管理员</el-tab-pane><el-tab-pane label="权限">billing:view / stats:view</el-tab-pane></el-tabs></section></template>
+<script setup lang="ts"></script>

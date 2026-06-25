@@ -8,3 +8,6 @@ target/
 *.key
 *.crt
 .claude/settings.local.json
+node_modules/
+dist/
+platform-ui/dist/

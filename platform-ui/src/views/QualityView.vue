@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>数据质量</h1><div class="grid"><div class="metric">规则 6</div><div class="metric">工单 3</div><div class="metric">评分 A</div></div><el-button>查看工单</el-button></section></template>
+<script setup lang="ts"></script>

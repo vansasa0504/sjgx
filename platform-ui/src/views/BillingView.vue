@@ -1,0 +1,2 @@
+<template><section class="panel"><h1>计费管理</h1><el-tabs><el-tab-pane label="规则"><el-button type="primary">新增规则</el-button></el-tab-pane><el-tab-pane label="账单"><el-table :data="bills"><el-table-column prop="no" label="账单号"/><el-table-column prop="amount" label="金额"/><el-table-column prop="status" label="状态"/></el-table></el-tab-pane><el-tab-pane label="异议"><el-button>发起异议</el-button></el-tab-pane></el-tabs></section></template>
+<script setup lang="ts">const bills = [{ no: 'B-20260625', amount: 1200, status: 'GENERATED' }]</script>
