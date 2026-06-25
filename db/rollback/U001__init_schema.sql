@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS t_permission;
+DROP TABLE IF EXISTS t_role;
+DROP TABLE IF EXISTS t_user;

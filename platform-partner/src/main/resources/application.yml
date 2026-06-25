@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: platform-partner
+  datasource:
+    url: ${PARTNER_DB_URL:jdbc:mysql://localhost:3306/sjgx}
+    username: ${PARTNER_DB_USERNAME:root}
+    password: ${PARTNER_DB_PASSWORD:root}
+
+partner:
+  credential-key: ${PARTNER_CREDENTIAL_KEY:change-me-in-env}

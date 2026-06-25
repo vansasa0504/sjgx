@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: platform-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+    gateway:
+      globalcors:
+        cors-configurations:
+          "[/**]":
+            allowed-origin-patterns: "*"
+            allowed-methods: "*"
+            allowed-headers: "*"
+      routes:
+        - id: platform-auth
+          uri: lb://platform-auth
+          predicates:
+            - Path=/auth/**,/users/**,/roles/**,/permissions/**
+        - id: platform-partner
+          uri: lb://platform-partner
+          predicates:
+            - Path=/api/v1/partners/**
+        - id: platform-pipeline
+          uri: lb://platform-pipeline
+          predicates:
+            - Path=/api/v1/ingest/**
+
+sentinel:
+  rules:
+    - path: /api/v1/ingest/**
+      qps: ${SENTINEL_INGEST_QPS:100}

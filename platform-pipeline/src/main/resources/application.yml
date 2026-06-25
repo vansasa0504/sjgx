@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: platform-pipeline
+  datasource:
+    url: ${PIPELINE_DB_URL:jdbc:mysql://localhost:3306/sjgx}
+    username: ${PIPELINE_DB_USERNAME:root}
+    password: ${PIPELINE_DB_PASSWORD:root}
+
+ingest:
+  http:
+    connect-timeout-seconds: ${INGEST_HTTP_CONNECT_TIMEOUT_SECONDS:3}
+    request-timeout-seconds: ${INGEST_HTTP_REQUEST_TIMEOUT_SECONDS:10}
