@@ -9,7 +9,7 @@ spring:
       globalcors:
         cors-configurations:
           "[/**]":
-            allowed-origin-patterns: "*"
+            allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:*}
             allowed-methods: "*"
             allowed-headers: "*"
       routes:
@@ -25,6 +25,8 @@ spring:
           uri: lb://platform-pipeline
           predicates:
             - Path=/api/v1/ingest/**
+  flyway:
+    enabled: ${FLYWAY_ENABLED:false}
 
 sentinel:
   rules:

@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AuthServiceTest {
@@ -24,6 +24,18 @@ class AuthServiceTest {
     }
 
     @Test
+    void controllerExposesLoginRefreshAndLogout() {
+        AuthService service = new AuthService("secret", Clock.systemUTC());
+        AuthController controller = new AuthController(service);
+
+        String token = controller.login(new AuthController.LoginRequest("admin", "admin123")).data().token();
+
+        assertNotNull(token);
+        assertNotNull(controller.refresh("Bearer " + token).data().token());
+        assertEquals(true, controller.logout().success());
+    }
+
+    @Test
     void loginFailsForBadPassword() {
         AuthService service = new AuthService("secret", Clock.systemUTC());
 
@@ -32,7 +44,7 @@ class AuthServiceTest {
 
     @Test
     void rejectsExpiredToken() {
-        JwtUtil issuer = new JwtUtil("secret", Clock.fixed(Instant.parse("2026-06-25T00:00:00Z"), ZoneOffset.UTC));
+        com.platform.common.auth.JwtUtil issuer = new com.platform.common.auth.JwtUtil("secret", Clock.fixed(Instant.parse("2026-06-25T00:00:00Z"), ZoneOffset.UTC));
         String token = issuer.issue("admin", java.util.Set.of(), 1);
         AuthService verifier = new AuthService("secret", Clock.fixed(Instant.parse("2026-06-25T00:00:02Z"), ZoneOffset.UTC));
 

@@ -1,4 +1,4 @@
-package com.platform.auth;
+package com.platform.common.auth;
 
 import com.platform.common.exception.BusinessException;
 

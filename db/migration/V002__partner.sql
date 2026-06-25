@@ -1,6 +1,11 @@
 CREATE TABLE IF NOT EXISTS t_partner (
     id BIGINT PRIMARY KEY,
+    partner_code VARCHAR(64) NOT NULL UNIQUE,
     name VARCHAR(128) NOT NULL,
+    data_type VARCHAR(64),
+    industry_type VARCHAR(64),
+    compliance_level VARCHAR(32),
+    service_quality_level VARCHAR(32),
     status VARCHAR(32) NOT NULL,
     rating VARCHAR(8),
     created_at TIMESTAMP NOT NULL,
@@ -12,6 +17,8 @@ CREATE TABLE IF NOT EXISTS t_partner_interface (
     partner_id BIGINT NOT NULL,
     protocol VARCHAR(32) NOT NULL,
     endpoint VARCHAR(512) NOT NULL,
+    data_scope VARCHAR(512),
+    rate_limit_per_minute BIGINT,
     credential_cipher VARCHAR(1024) NOT NULL,
     created_at TIMESTAMP NOT NULL
 );

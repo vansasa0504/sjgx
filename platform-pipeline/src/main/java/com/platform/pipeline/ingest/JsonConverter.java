@@ -1,13 +1,25 @@
 package com.platform.pipeline.ingest;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.common.exception.BusinessException;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class JsonConverter implements FormatConverter {
+    private final ObjectMapper objectMapper;
+
+    public JsonConverter() {
+        this(new ObjectMapper());
+    }
+
+    JsonConverter(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
     @Override
     public String format() {
         return "JSON";
@@ -15,61 +27,27 @@ public class JsonConverter implements FormatConverter {
 
     @Override
     public List<Map<String, String>> convert(String rawPayload) {
-        String trimmed = rawPayload == null ? "" : rawPayload.trim();
-        if (!(trimmed.startsWith("{") && trimmed.endsWith("}")) && !(trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+        try {
+            JsonNode root = objectMapper.readTree(rawPayload);
+            if (root.isArray()) {
+                return objectMapper.convertValue(root, new TypeReference<List<Map<String, Object>>>() {})
+                        .stream().map(this::stringify).toList();
+            }
+            if (root.isObject()) {
+                Map<String, Object> row = objectMapper.convertValue(root, new TypeReference<Map<String, Object>>() {});
+                return List.of(stringify(row));
+            }
+            throw new BusinessException("INGEST-400", "JSON root must be object or array");
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
             throw new BusinessException("INGEST-400", "invalid JSON payload");
         }
-        if (trimmed.startsWith("[")) {
-            return parseArray(trimmed);
-        }
-        return List.of(parseObject(trimmed));
     }
 
-    private List<Map<String, String>> parseArray(String value) {
-        String body = value.substring(1, value.length() - 1).trim();
-        if (body.isEmpty()) {
-            return List.of();
-        }
-        List<Map<String, String>> rows = new ArrayList<>();
-        int depth = 0;
-        int start = 0;
-        for (int i = 0; i < body.length(); i++) {
-            char ch = body.charAt(i);
-            if (ch == '{') {
-                if (depth == 0) {
-                    start = i;
-                }
-                depth++;
-            } else if (ch == '}') {
-                depth--;
-                if (depth == 0) {
-                    rows.add(parseObject(body.substring(start, i + 1)));
-                }
-            }
-        }
-        return rows;
-    }
-
-    private Map<String, String> parseObject(String value) {
-        String body = value.substring(1, value.length() - 1).trim();
-        Map<String, String> row = new LinkedHashMap<>();
-        if (body.isEmpty()) {
-            return row;
-        }
-        for (String pair : body.split(",")) {
-            String[] parts = pair.split(":", 2);
-            if (parts.length == 2) {
-                row.put(unquote(parts[0]), unquote(parts[1]));
-            }
-        }
-        return row;
-    }
-
-    private String unquote(String value) {
-        String trimmed = value.trim();
-        if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-            return trimmed.substring(1, trimmed.length() - 1);
-        }
-        return trimmed;
+    private Map<String, String> stringify(Map<String, Object> row) {
+        Map<String, String> converted = new LinkedHashMap<>();
+        row.forEach((key, value) -> converted.put(key, value == null ? null : String.valueOf(value)));
+        return converted;
     }
 }

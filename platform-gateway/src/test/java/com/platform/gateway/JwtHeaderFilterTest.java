@@ -1,6 +1,6 @@
 package com.platform.gateway;
 
-import com.platform.auth.JwtUtil;
+import com.platform.common.auth.JwtUtil;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;

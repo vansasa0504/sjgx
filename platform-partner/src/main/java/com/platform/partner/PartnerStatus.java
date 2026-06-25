@@ -4,7 +4,9 @@ public enum PartnerStatus {
     REGISTERED,
     SUBMITTED,
     APPROVED,
+    REJECTED,
     ADMITTED,
     RATED,
+    SUSPENDED,
     EXITED
 }

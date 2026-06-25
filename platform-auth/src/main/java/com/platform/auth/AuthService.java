@@ -1,29 +1,30 @@
 package com.platform.auth;
 
 import com.platform.common.audit.AuditLogger;
+import com.platform.common.auth.AuthPrincipal;
+import com.platform.common.auth.JwtUtil;
 import com.platform.common.exception.BusinessException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Clock;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class AuthService {
+    private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
     private final Map<String, UserAccount> users = new ConcurrentHashMap<>();
     private final JwtUtil jwtUtil;
 
     public AuthService(String jwtSecret, Clock clock) {
         this.jwtUtil = new JwtUtil(jwtSecret, clock);
-        users.put("admin", new UserAccount("admin", hash("admin123"),
+        users.put("admin", new UserAccount("admin", PASSWORD_ENCODER.encode("admin123"),
                 Set.of("partner:create", "partner:read", "ingest:create", "ingest:run")));
     }
 
     public String login(String username, String password) {
         UserAccount account = users.get(username);
-        if (account == null || !account.passwordHash().equals(hash(password))) {
+        if (account == null || !PASSWORD_ENCODER.matches(password, account.passwordHash())) {
             throw new BusinessException("AUTH-401", "bad credentials");
         }
         AuditLogger.record("login", username);
@@ -48,14 +49,5 @@ public class AuthService {
 
     public AuthPrincipal parse(String token) {
         return jwtUtil.parse(token);
-    }
-
-    static String hash(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (Exception ex) {
-            throw new IllegalStateException(ex);
-        }
     }
 }

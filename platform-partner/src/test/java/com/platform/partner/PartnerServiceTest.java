@@ -24,6 +24,28 @@ class PartnerServiceTest {
     }
 
     @Test
+    void coversRejectAndSuspendTransitions() {
+        PartnerStateMachine machine = new PartnerStateMachine();
+
+        assertEquals(PartnerStatus.REJECTED, machine.transit(PartnerStatus.SUBMITTED, PartnerEvent.REJECT));
+        assertEquals(PartnerStatus.SUSPENDED, machine.transit(PartnerStatus.ADMITTED, PartnerEvent.SUSPEND));
+        assertEquals(PartnerStatus.ADMITTED, machine.transit(PartnerStatus.SUSPENDED, PartnerEvent.RESUME));
+    }
+
+    @Test
+    void controllerCreatesPartnerAndConfiguresInterface() {
+        PartnerService service = new PartnerService("test-key");
+        PartnerController controller = new PartnerController(service);
+
+        Partner partner = controller.create(new PartnerController.CreatePartnerRequest("征信联合服务")).data();
+        PartnerInterfaceConfig config = controller.configure(partner.id(),
+                new PartnerController.InterfaceRequest("HTTPS", "https://partner.example/api", "api-secret")).data();
+
+        assertEquals(partner.id(), controller.detail(partner.id()).data().id());
+        assertEquals("HTTPS", config.protocol());
+    }
+
+    @Test
     void rejectsIllegalTransition() {
         PartnerService service = new PartnerService("test-key");
         Partner partner = service.create("征信联合服务");

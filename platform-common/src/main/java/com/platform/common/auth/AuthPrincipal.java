@@ -1,4 +1,4 @@
-package com.platform.auth;
+package com.platform.common.auth;
 
 import java.util.Set;
 

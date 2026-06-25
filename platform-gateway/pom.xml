@@ -10,8 +10,20 @@
     <artifactId>platform-gateway</artifactId>
     <dependencies>
         <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.platform</groupId>
-            <artifactId>platform-auth</artifactId>
+            <artifactId>platform-common</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>
