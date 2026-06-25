@@ -2,6 +2,11 @@ package com.platform.partner.consumer;
 
 import com.platform.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -24,6 +29,24 @@ class ConsumerServiceTest {
         assertThrows(BusinessException.class, () -> service.consume(consumer.id()));
         assertTrue(service.events().stream().anyMatch(e -> e.contains("QUOTA_WARNING")));
         assertTrue(service.events().stream().anyMatch(e -> e.contains("QUOTA_EXCEEDED")));
+    }
+
+    @Test
+    void redisQuotaCounterUsesLuaResultForQuotaDecision() {
+        AtomicLong calls = new AtomicLong();
+        RedisQuotaCounter counter = new RedisQuotaCounter(new RedisTemplate<>() {
+            @Override
+            @SuppressWarnings("unchecked")
+            public <T> T execute(RedisScript<T> script, List<String> keys, Object... args) {
+                long next = calls.incrementAndGet();
+                long max = Long.parseLong(String.valueOf(args[0]));
+                return (T) Long.valueOf(next > max ? -1L : next);
+            }
+        });
+
+        assertEquals(1, counter.incrementAndCheck(7L, 2));
+        assertEquals(2, counter.incrementAndCheck(7L, 2));
+        assertThrows(BusinessException.class, () -> counter.incrementAndCheck(7L, 2));
     }
 
     @Test

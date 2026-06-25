@@ -14,6 +14,15 @@ public class ConsumerService {
     private final Map<Long, ConsumerQuota> quotas = new ConcurrentHashMap<>();
     private final List<String> events = new ArrayList<>();
     private final ConsumerStateMachine stateMachine = new ConsumerStateMachine();
+    private final QuotaCounter quotaCounter;
+
+    public ConsumerService() {
+        this(new LocalQuotaCounter());
+    }
+
+    public ConsumerService(QuotaCounter quotaCounter) {
+        this.quotaCounter = quotaCounter;
+    }
 
     public Consumer register(String code, String name, String businessLine, String systemType, String complianceLevel) {
         Consumer consumer = new Consumer(ids.getAndIncrement(), code, name, businessLine, systemType, complianceLevel);
@@ -43,10 +52,14 @@ public class ConsumerService {
         if (quota == null) {
             throw new BusinessException("CONSUMER-404", "quota not configured");
         }
-        long next = quota.usedRequests() + 1;
-        if (next > quota.maxRequests()) {
-            events.add(consumerId + ":QUOTA_EXCEEDED");
-            throw new BusinessException("CONSUMER-429", "quota exceeded");
+        long next;
+        try {
+            next = quotaCounter.incrementAndCheck(consumerId, quota.maxRequests());
+        } catch (BusinessException ex) {
+            if ("CONSUMER-429".equals(ex.code())) {
+                events.add(consumerId + ":QUOTA_EXCEEDED");
+            }
+            throw ex;
         }
         if (next >= quota.warnThreshold()) {
             events.add(consumerId + ":QUOTA_WARNING");
@@ -66,5 +79,18 @@ public class ConsumerService {
             throw new BusinessException("CONSUMER-404", "consumer not found");
         }
         return consumer;
+    }
+
+    private static class LocalQuotaCounter implements QuotaCounter {
+        private final Map<Long, Long> counts = new ConcurrentHashMap<>();
+
+        @Override
+        public long incrementAndCheck(long consumerId, long maxRequests) {
+            long next = counts.merge(consumerId, 1L, Long::sum);
+            if (next > maxRequests) {
+                throw new BusinessException("CONSUMER-429", "quota exceeded");
+            }
+            return next;
+        }
     }
 }

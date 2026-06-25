@@ -3,7 +3,9 @@ package com.platform.pipeline.service;
 import com.platform.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -44,5 +46,57 @@ class DataServiceManagerTest {
         manager.invoke("svc-risk", "consumer-a", "api-key", "secret", timestamp, "n1", "{}", sig1);
         manager.invoke("svc-risk", "consumer-a", "api-key", "secret", timestamp, "n2", "{}", sig2);
         assertThrows(BusinessException.class, () -> manager.invoke("svc-risk", "consumer-a", "api-key", "secret", timestamp, "n3", "{}", sig3));
+    }
+
+    @Test
+    void rateLimiterReleasesCapacityAfterWindow() {
+        MutableClock clock = new MutableClock();
+        RateLimiter limiter = new RateLimiter(2, 1_000, clock);
+
+        limiter.acquire("svc-a");
+        limiter.acquire("svc-a");
+        assertThrows(BusinessException.class, () -> limiter.acquire("svc-a"));
+
+        clock.advanceMillis(1_000);
+        limiter.acquire("svc-a");
+    }
+
+    @Test
+    void circuitBreakerOpensAndRecoversThroughHalfOpenState() {
+        MutableClock clock = new MutableClock();
+        CircuitBreaker breaker = new CircuitBreaker(2, 1_000, clock);
+
+        assertThrows(BusinessException.class, () -> breaker.call(() -> { throw new IllegalStateException("down"); }));
+        assertEquals(CircuitBreaker.State.CLOSED, breaker.state());
+        assertThrows(BusinessException.class, () -> breaker.call(() -> { throw new IllegalStateException("down"); }));
+        assertEquals(CircuitBreaker.State.OPEN, breaker.state());
+        assertThrows(BusinessException.class, () -> breaker.call(() -> "blocked"));
+
+        clock.advanceMillis(1_000);
+        assertEquals("ok", breaker.call(() -> "ok"));
+        assertEquals(CircuitBreaker.State.CLOSED, breaker.state());
+    }
+
+    private static class MutableClock extends Clock {
+        private Instant instant = Instant.parse("2026-06-25T00:00:00Z");
+
+        void advanceMillis(long millis) {
+            instant = instant.plusMillis(millis);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneId.of("UTC");
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
     }
 }
