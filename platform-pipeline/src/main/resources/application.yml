@@ -14,3 +14,7 @@ ingest:
   http:
     connect-timeout-seconds: ${INGEST_HTTP_CONNECT_TIMEOUT_SECONDS:3}
     request-timeout-seconds: ${INGEST_HTTP_REQUEST_TIMEOUT_SECONDS:10}
+storage:
+  data-asset:
+    sm4-key: ${DATA_ASSET_SM4_KEY:0123456789abcdef}
+

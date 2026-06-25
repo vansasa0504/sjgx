@@ -15,12 +15,18 @@ public class IngestService {
     private final ProtocolAdapter adapter;
     private final FormatConverter converter;
     private final RawDataRepository repository;
+    private final IngestQualityGuard qualityGuard;
     private final IngestTaskStateMachine stateMachine = new IngestTaskStateMachine();
 
     public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository) {
+        this(adapter, converter, repository, IngestQualityGuard.disabled());
+    }
+
+    public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository, IngestQualityGuard qualityGuard) {
         this.adapter = adapter;
         this.converter = converter;
         this.repository = repository;
+        this.qualityGuard = qualityGuard;
     }
 
     public IngestTask createTask(long partnerId, URI endpoint) {
@@ -34,6 +40,7 @@ public class IngestService {
             transition(task, IngestTaskEvent.START_TEST);
             String payload = adapter.fetch(task.endpoint());
             List<Map<String, String>> converted = converter.convert(payload);
+            qualityGuard.validate(converted);
             List<RawDataRecord> records = converted.stream()
                     .map(row -> new RawDataRecord(task.id(), task.partnerId(), row, Instant.now()))
                     .toList();
@@ -69,3 +76,4 @@ public class IngestService {
         return repository.findAll();
     }
 }
+

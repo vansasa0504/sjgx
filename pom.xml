@@ -12,6 +12,7 @@
         <module>platform-gateway</module>
         <module>platform-auth</module>
         <module>platform-partner</module>
+        <module>platform-quality</module>
         <module>platform-pipeline</module>
     </modules>
 
@@ -79,3 +80,4 @@
         </pluginManagement>
     </build>
 </project>
+

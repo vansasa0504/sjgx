@@ -1,6 +1,9 @@
 package com.platform.pipeline.ingest;
 
 import com.platform.common.exception.BusinessException;
+import com.platform.quality.executor.QualityCheckExecutor;
+import com.platform.quality.rule.QualityDimension;
+import com.platform.quality.rule.QualityRuleConfig;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
@@ -8,6 +11,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -65,6 +70,30 @@ class IngestServiceTest {
         }
     }
 
+
+    @Test
+    void blocksIngestWhenQualityFailRateExceedsThreshold() {
+        RawDataRepository repository = new RawDataRepository();
+        ProtocolAdapter adapter = new ProtocolAdapter() {
+            @Override
+            public String protocol() {
+                return "MOCK";
+            }
+
+            @Override
+            public String fetch(URI endpoint) {
+                return "[{\"id\":\"\",\"name\":\"bad\"}]";
+            }
+        };
+        FormatConverter converter = new JsonConverter();
+        IngestQualityGuard guard = new IngestQualityGuard(new QualityCheckExecutor(),
+                List.of(new QualityRuleConfig("required-id", QualityDimension.COMPLETENESS, "id", Map.of(), 100)), 0.0);
+        IngestService service = new IngestService(adapter, converter, repository, guard);
+        IngestTask task = service.createTask(1L, URI.create("mock://quality"));
+
+        assertThrows(BusinessException.class, () -> service.testAndIngest(task));
+        assertEquals(0, repository.findAll().size());
+    }
     @Test
     void rejectsInvalidJsonPayload() {
         JsonConverter converter = new JsonConverter();
@@ -92,3 +121,5 @@ class IngestServiceTest {
         assertThrows(BusinessException.class, () -> machine.transit(IngestTaskStatus.DRAFT, IngestTaskEvent.APPROVE));
     }
 }
+
+
