@@ -17,7 +17,16 @@ public class DashboardService {
                 .map(StatsSnapshot::metricValue)
                 .findFirst()
                 .orElse(BigDecimal.ZERO);
+        long serviceCount = snapshots.stream()
+                .filter(snapshot -> snapshot.dimensionId() != null)
+                .map(StatsSnapshot::dimensionId)
+                .distinct()
+                .count();
+        if (serviceCount == 0 && invokeCount > 0) {
+            serviceCount = 1;
+        }
         BigDecimal cost = bills.stream().map(Bill::totalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new DashboardSummary(1, invokeCount, successRate, BigDecimal.valueOf(100), cost);
+        return new DashboardSummary(serviceCount, invokeCount, successRate, BigDecimal.valueOf(100), cost);
     }
 }
+

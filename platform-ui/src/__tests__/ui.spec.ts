@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import axiosMockAdapter from 'axios-mock-adapter'
 import { createPinia, setActivePinia } from 'pinia'
+import ElementPlus from 'element-plus'
 import BillingView from '../views/BillingView.vue'
 import PartnerView from '../views/PartnerView.vue'
 import StatsView from '../views/StatsView.vue'
@@ -13,9 +14,9 @@ vi.mock('echarts', () => ({ init: () => ({ setOption: vi.fn() }) }))
 describe('M4 console', () => {
   it('renders core governance pages', () => {
     setActivePinia(createPinia())
-    expect(mount(PartnerView).text()).toContain('合作方管理')
-    expect(mount(BillingView).text()).toContain('计费管理')
-    expect(mount(StatsView).text()).toContain('统计监管')
+    expect(mount(PartnerView, { global: { plugins: [ElementPlus] } }).text()).toContain('合作方管理')
+    expect(mount(BillingView, { global: { plugins: [ElementPlus] } }).text()).toContain('计费管理')
+    expect(mount(StatsView, { global: { plugins: [ElementPlus] } }).text()).toContain('统计监管')
   })
 
   it('calls dashboard api through axios wrapper', async () => {

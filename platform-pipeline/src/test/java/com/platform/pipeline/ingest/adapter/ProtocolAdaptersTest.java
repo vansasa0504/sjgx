@@ -120,5 +120,8 @@ class ProtocolAdaptersTest {
         DbAdapter db = new DbAdapter(Map.of("main", dataSource));
         assertEquals("[{\"id\":3,\"name\":\"delta\"}]",
                 db.fetch(URI.create("db://main/select%20id%20as%20%22id%22,%20name%20as%20%22name%22%20from%20customer")));
+        assertThrows(IllegalStateException.class, () ->
+                db.fetch(URI.create("db://main/delete%20from%20customer")));
     }
 }
+

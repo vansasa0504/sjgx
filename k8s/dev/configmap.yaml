@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sjgx-config
+  namespace: sjgx-dev
+data:
+  NACOS_ADDR: ${NACOS_ADDR}
+  REDIS_HOST: ${REDIS_HOST}
+  REDIS_PORT: ${REDIS_PORT}
+  DB_TYPE: ${DB_TYPE}
+  AUTH_DB_URL: ${AUTH_DB_URL}
+  PARTNER_DB_URL: ${PARTNER_DB_URL}
+  PIPELINE_DB_URL: ${PIPELINE_DB_URL}
+  BILLING_DB_URL: ${BILLING_DB_URL}
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}

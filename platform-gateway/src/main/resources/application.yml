@@ -24,7 +24,17 @@ spring:
         - id: platform-pipeline
           uri: lb://platform-pipeline
           predicates:
-            - Path=/api/v1/ingest/**
+            - Path=/api/v1/ingest/**,/api/v1/services/**,/api/v1/catalog/**
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:64}
+          max-idle: ${REDIS_POOL_MAX_IDLE:32}
+          min-idle: ${REDIS_POOL_MIN_IDLE:8}
+          max-wait: ${REDIS_POOL_MAX_WAIT_MS:2000}
   flyway:
     enabled: ${FLYWAY_ENABLED:false}
 
@@ -32,3 +42,11 @@ sentinel:
   rules:
     - path: /api/v1/ingest/**
       qps: ${SENTINEL_INGEST_QPS:100}
+    - path: /api/v1/services/**
+      qps: ${SENTINEL_SERVICE_QPS:1000}
+    - path: /auth/**
+      qps: ${SENTINEL_AUTH_QPS:100}
+  gateway-flow-rules:
+    default-qps: ${SENTINEL_DEFAULT_QPS:500}
+    service-invoke-qps: ${SENTINEL_SERVICE_INVOKE_QPS:1000}
+    auth-qps: ${SENTINEL_AUTH_QPS:100}

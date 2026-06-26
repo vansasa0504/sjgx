@@ -1,6 +1,7 @@
 package com.platform.pipeline.service;
 
 import com.platform.common.exception.BusinessException;
+import com.platform.common.model.ServiceInvokeLog;
 import com.platform.common.security.SignatureUtil;
 
 import java.time.Clock;
@@ -51,7 +52,7 @@ public class DataServiceManager {
         if (result == null) {
             throw new BusinessException("SERVICE-404", "route not found");
         }
-        logWriter.write(new ServiceInvokeLog(serviceCode, consumerCode, 200, System.currentTimeMillis() - start, Instant.now()));
+        logWriter.write(new ServiceInvokeLog(serviceCode, consumerCode, null, 200, System.currentTimeMillis() - start, ServiceInvokeLog.bytesOf(result), Instant.now()));
         return result;
     }
 
@@ -66,3 +67,4 @@ public class DataServiceManager {
         return definition;
     }
 }
+

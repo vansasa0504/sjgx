@@ -1,5 +1,7 @@
 package com.platform.pipeline.service;
 
+import com.platform.common.model.ServiceInvokeLog;
+
 import org.springframework.kafka.core.KafkaTemplate;
 
 import java.util.ArrayList;
@@ -31,3 +33,4 @@ public class AsyncInvokeLogWriter {
         return new ArrayList<>(localMirror);
     }
 }
+

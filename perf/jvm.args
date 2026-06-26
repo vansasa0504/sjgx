@@ -1,0 +1,8 @@
+# JVM tuning suggestion for M5 performance verification
+-Xms${JVM_XMS:-2g}
+-Xmx${JVM_XMX:-2g}
+-XX:+UseG1GC
+-XX:MaxGCPauseMillis=${JVM_MAX_GC_PAUSE_MS:-200}
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath=${JVM_HEAP_DUMP_PATH:-/var/log/sjgx/heapdump.hprof}
+-Xlog:gc*:file=${JVM_GC_LOG_PATH:-/var/log/sjgx/gc.log}:time,uptime,level,tags:filecount=5,filesize=50M
