@@ -1,5 +1,6 @@
 package com.platform.partner;
 
+import com.platform.common.exception.BusinessException;
 import com.platform.common.model.Page;
 import com.platform.common.model.Result;
 import com.platform.common.security.RequirePermission;
@@ -41,7 +42,7 @@ public class PartnerController {
     @GetMapping("/{id}")
     @RequirePermission("partner:view")
     public Result<Partner> detail(@PathVariable long id) {
-        return Result.ok(partnerService.find(id).orElseThrow(() -> new IllegalArgumentException("partner not found")));
+        return Result.ok(partnerService.find(id).orElseThrow(() -> new BusinessException("PARTNER-404", "partner not found")));
     }
 
     @PutMapping("/{id}")

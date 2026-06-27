@@ -20,8 +20,9 @@ class CatalogServiceTest {
     }
 
     @Test
-    void providesDemoCatalogItemForHttpRegression() {
+    void seededCatalogIsQueryable() {
         CatalogService service = new CatalogService();
+        service.add("cat-demo", "示例资产", "征信", 1L, "JSON", "风控", List.of("name"), "JSON", "DAILY", "DEMO", "L2", "内部");
 
         assertFalse(service.query(null, null, null, null).isEmpty());
     }

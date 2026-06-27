@@ -22,6 +22,15 @@ public class DataServiceManager {
     private final RateLimiter rateLimiter = new RateLimiter(2);
     private final CircuitBreaker circuitBreaker = new CircuitBreaker();
     private final SignatureUtil signatureUtil = new SignatureUtil(Clock.systemUTC());
+    private final ApiCredentialRepository apiCredentialRepository;
+
+    public DataServiceManager() {
+        this(new ApiCredentialRepository());
+    }
+
+    public DataServiceManager(ApiCredentialRepository apiCredentialRepository) {
+        this.apiCredentialRepository = apiCredentialRepository;
+    }
 
     public DataServiceDefinition register(String serviceCode, String name, String routeKey) {
         DataServiceDefinition definition = new DataServiceDefinition(ids.getAndIncrement(), serviceCode, name, routeKey);
@@ -81,11 +90,17 @@ public class DataServiceManager {
         routeData.put(routeKey, response);
     }
 
-    public String invoke(String serviceCode, String consumerCode, String apiKey, String secret,
+    /**
+     * 调用数据服务。通过 apiKey 从仓储查找 secret 进行签名验证，不再从请求体接收明文 secret。
+     */
+    public String invoke(String serviceCode, String consumerCode, String apiKey,
                          long timestamp, String nonce, String body, String signature) {
         long start = System.currentTimeMillis();
+        ApiCredentialRepository.ApiCredential credential = apiCredentialRepository.findByApiKey(apiKey);
+        String secret = credential.secret();
         signatureUtil.verify(apiKey, secret, timestamp, nonce, body, signature);
-        rateLimiter.acquire(consumerCode + ':' + serviceCode);
+        String effectiveConsumer = consumerCode != null ? consumerCode : credential.consumerCode();
+        rateLimiter.acquire(effectiveConsumer + ':' + serviceCode);
         DataServiceDefinition definition = require(serviceCode);
         if (definition.status() != DataServiceStatus.PUBLISHED) {
             throw new BusinessException("SERVICE-404", "service not published");
@@ -94,12 +109,13 @@ public class DataServiceManager {
         if (result == null) {
             throw new BusinessException("SERVICE-404", "route not found");
         }
-        logWriter.write(new ServiceInvokeLog(serviceCode, consumerCode, null, 200, System.currentTimeMillis() - start, ServiceInvokeLog.bytesOf(result), Instant.now()));
+        logWriter.write(new ServiceInvokeLog(serviceCode, effectiveConsumer, null, 200, System.currentTimeMillis() - start, ServiceInvokeLog.bytesOf(result), Instant.now()));
         return result;
     }
 
     public AsyncInvokeLogWriter logWriter() { return logWriter; }
     public SignatureUtil signatureUtil() { return signatureUtil; }
+    public ApiCredentialRepository apiCredentialRepository() { return apiCredentialRepository; }
 
     private DataServiceDefinition require(String serviceCode) {
         DataServiceDefinition definition = services.get(serviceCode);

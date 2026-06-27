@@ -85,7 +85,7 @@ public class DataServiceController {
     @PostMapping("/{serviceCode}/invoke")
     public Result<String> invoke(@PathVariable String serviceCode, @RequestBody InvokeRequest request) {
         return Result.ok(dataServiceManager.invoke(serviceCode, request.consumerCode(), request.apiKey(),
-                request.secret(), request.timestamp(), request.nonce(), request.params(), request.signature()));
+                request.timestamp(), request.nonce(), request.params(), request.signature()));
     }
 
     public record RegisterServiceRequest(String serviceCode, String name, String routeKey) {
@@ -94,7 +94,7 @@ public class DataServiceController {
     public record UpdateServiceRequest(String name, String routeKey) {
     }
 
-    public record InvokeRequest(String consumerCode, String apiKey, String secret, long timestamp,
+    public record InvokeRequest(String consumerCode, String apiKey, long timestamp,
                                 String nonce, String params, String signature) {
     }
 }

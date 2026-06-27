@@ -22,7 +22,7 @@ class DataServiceManagerTest {
         long timestamp = Instant.now().getEpochSecond();
         String signature = manager.signatureUtil().sign("api-key", "secret", timestamp, "nonce-a", "{}");
 
-        String response = manager.invoke("svc-risk", "consumer-a", "api-key", "secret", timestamp, "nonce-a", "{}", signature);
+        String response = manager.invoke("svc-risk", "consumer-a", "api-key", timestamp, "nonce-a", "{}", signature);
 
         assertEquals(DataServiceStatus.PUBLISHED, definition.status());
         assertEquals("{\"risk\":\"low\"}", response);
@@ -39,7 +39,7 @@ class DataServiceManagerTest {
         long timestamp = Instant.now().getEpochSecond();
         String signature = manager.signatureUtil().sign("api-key", "secret", timestamp, "nonce-default", "{}");
 
-        String response = manager.invoke("svc-demo", "consumer-a", "api-key", "secret", timestamp, "nonce-default", "{}", signature);
+        String response = manager.invoke("svc-demo", "consumer-a", "api-key", timestamp, "nonce-default", "{}", signature);
 
         assertEquals("{\"status\":\"ok\"}", response);
     }
@@ -58,9 +58,9 @@ class DataServiceManagerTest {
         String sig1 = manager.signatureUtil().sign("api-key", "secret", timestamp, "n1", "{}");
         String sig2 = manager.signatureUtil().sign("api-key", "secret", timestamp, "n2", "{}");
         String sig3 = manager.signatureUtil().sign("api-key", "secret", timestamp, "n3", "{}");
-        manager.invoke("svc-risk", "consumer-a", "api-key", "secret", timestamp, "n1", "{}", sig1);
-        manager.invoke("svc-risk", "consumer-a", "api-key", "secret", timestamp, "n2", "{}", sig2);
-        assertThrows(BusinessException.class, () -> manager.invoke("svc-risk", "consumer-a", "api-key", "secret", timestamp, "n3", "{}", sig3));
+        manager.invoke("svc-risk", "consumer-a", "api-key", timestamp, "n1", "{}", sig1);
+        manager.invoke("svc-risk", "consumer-a", "api-key", timestamp, "n2", "{}", sig2);
+        assertThrows(BusinessException.class, () -> manager.invoke("svc-risk", "consumer-a", "api-key", timestamp, "n3", "{}", sig3));
     }
 
     @Test

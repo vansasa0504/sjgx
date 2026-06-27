@@ -87,7 +87,7 @@ class M5EndToEndIntegrationTest {
         long timestamp = Instant.now().getEpochSecond();
         String signature = dataServiceManager.signatureUtil().sign("api-key", "secret", timestamp, "n1", "{}");
 
-        String response = dataServiceManager.invoke("svc-risk", "c1", "api-key", "secret", timestamp, "n1", "{}", signature);
+        String response = dataServiceManager.invoke("svc-risk", "c1", "api-key", timestamp, "n1", "{}", signature);
 
         assertEquals("{\"score\":88}", response);
         assertEquals(1, dataServiceManager.logWriter().logs().size());
@@ -126,18 +126,18 @@ class M5EndToEndIntegrationTest {
         DataServiceManager manager = new DataServiceManager();
         manager.register("svc", "svc", "route");
         long ts = Instant.now().getEpochSecond();
-        assertThrows(BusinessException.class, () -> manager.invoke("svc", "c1", "api", "secret", ts, "bad", "{}", "bad-signature"));
+        assertThrows(BusinessException.class, () -> manager.invoke("svc", "c1", "api-key", ts, "bad", "{}", "bad-signature"));
         manager.apply("svc", DataServiceEvent.DEFINE);
         manager.apply("svc", DataServiceEvent.TEST);
         manager.apply("svc", DataServiceEvent.PUBLISH);
         manager.putRouteData("route", "{}");
         for (int i = 0; i < 2; i++) {
             String nonce = "n" + i;
-            manager.invoke("svc", "c1", "api", "secret", ts, nonce, "{}", manager.signatureUtil().sign("api", "secret", ts, nonce, "{}"));
+            manager.invoke("svc", "c1", "api-key", ts, nonce, "{}", manager.signatureUtil().sign("api-key", "secret", ts, nonce, "{}"));
         }
         String nonce = "n3";
-        assertThrows(BusinessException.class, () -> manager.invoke("svc", "c1", "api", "secret", ts, nonce, "{}",
-                manager.signatureUtil().sign("api", "secret", ts, nonce, "{}")));
+        assertThrows(BusinessException.class, () -> manager.invoke("svc", "c1", "api-key", ts, nonce, "{}",
+                manager.signatureUtil().sign("api-key", "secret", ts, nonce, "{}")));
     }
 
     @Test
