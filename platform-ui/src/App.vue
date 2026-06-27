@@ -1,22 +1,23 @@
 <template>
-  <RouterView v-if="$route.path === '/login'" />
-  <div v-else class="shell">
-    <aside class="sidebar">
-      <h2>外部数据平台</h2>
-      <RouterLink v-for="item in menu" :key="item.path" :to="item.path">{{ item.meta?.title }}</RouterLink>
-    </aside>
-    <main class="content">
-      <RouterView />
-    </main>
-  </div>
+  <RouterView />
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { RouterLink, RouterView } from 'vue-router'
-import { permittedRoutes } from './router'
+import { onBeforeUnmount, onMounted } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from './stores/auth'
 
 const auth = useAuthStore()
-const menu = computed(() => permittedRoutes(auth.permissions).filter((route) => route.path !== '/login' && route.path !== '/'))
+const router = useRouter()
+const route = useRoute()
+
+async function handleAuthExpired() {
+  await auth.logout({ remote: false })
+  ElMessage.error('登录已过期，请重新登录')
+  router.push({ path: '/login', query: { redirect: route.fullPath } })
+}
+
+onMounted(() => window.addEventListener('auth-expired', handleAuthExpired))
+onBeforeUnmount(() => window.removeEventListener('auth-expired', handleAuthExpired))
 </script>
