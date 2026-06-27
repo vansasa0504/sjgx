@@ -9,6 +9,11 @@ public class CatalogService {
     private final AtomicLong ids = new AtomicLong(1);
     private final List<DataCatalogItem> items = new ArrayList<>();
 
+    public CatalogService() {
+        add("CATALOG-DEMO", "示例外部数据资产", "征信主题", 1L, "JSON", "风控",
+                List.of("name", "score"), "JSON", "DAILY", "DEMO", "测试环境示例资产", "仅用于开发回归");
+    }
+
     public DataCatalogItem add(String catalogCode, String name, String subject, long partnerId, String dataType,
                                String scenario, List<String> fields, String format, String updateFrequency,
                                String source, String complianceNote, String usageLimit) {

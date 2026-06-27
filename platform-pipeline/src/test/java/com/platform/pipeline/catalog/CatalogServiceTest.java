@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class CatalogServiceTest {
     @Test
@@ -16,5 +17,12 @@ class CatalogServiceTest {
         assertEquals(1, service.query("信用", null, null, null).size());
         assertEquals(1, service.query(null, 2L, "政务", "营销").size());
         assertEquals(0, service.query("信用", 2L, null, null).size());
+    }
+
+    @Test
+    void providesDemoCatalogItemForHttpRegression() {
+        CatalogService service = new CatalogService();
+
+        assertFalse(service.query(null, null, null, null).isEmpty());
     }
 }

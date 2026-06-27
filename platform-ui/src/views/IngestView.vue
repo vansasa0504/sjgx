@@ -119,7 +119,7 @@ function normalizeTaskForm(form: Record<string, unknown>) {
   } as never
 }
 function status(row: IngestTask) { return String(row.status || '').toUpperCase() }
-function canSubmit(row: IngestTask) { return auth.hasPermission('ingest:approve') && ['DRAFT', 'TESTING'].includes(status(row)) }
-function canApprove(row: IngestTask) { return auth.hasPermission('ingest:approve') && ['PENDING_APPROVAL', 'SUBMITTED'].includes(status(row)) }
+function canSubmit(row: IngestTask) { return auth.hasPermission('ingest:approve') && status(row) === 'TESTING' }
+function canApprove(row: IngestTask) { return auth.hasPermission('ingest:approve') && status(row) === 'PENDING_APPROVAL' }
 function canOffline(row: IngestTask) { return auth.hasPermission('ingest:approve') && ['ONLINE'].includes(status(row)) }
 </script>

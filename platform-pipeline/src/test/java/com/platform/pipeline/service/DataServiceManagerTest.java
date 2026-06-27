@@ -30,6 +30,21 @@ class DataServiceManagerTest {
     }
 
     @Test
+    void registeredServiceHasDefaultRouteDataForHttpRegression() {
+        DataServiceManager manager = new DataServiceManager();
+        manager.register("svc-demo", "演示服务", "route-demo");
+        manager.apply("svc-demo", DataServiceEvent.DEFINE);
+        manager.apply("svc-demo", DataServiceEvent.TEST);
+        manager.apply("svc-demo", DataServiceEvent.PUBLISH);
+        long timestamp = Instant.now().getEpochSecond();
+        String signature = manager.signatureUtil().sign("api-key", "secret", timestamp, "nonce-default", "{}");
+
+        String response = manager.invoke("svc-demo", "consumer-a", "api-key", "secret", timestamp, "nonce-default", "{}", signature);
+
+        assertEquals("{\"status\":\"ok\"}", response);
+    }
+
+    @Test
     void rejectsIllegalLifecycleRateLimitAndBreakerFailures() {
         DataServiceManager manager = new DataServiceManager();
         manager.register("svc-risk", "风险数据", "route-risk");

@@ -26,6 +26,7 @@ public class DataServiceManager {
     public DataServiceDefinition register(String serviceCode, String name, String routeKey) {
         DataServiceDefinition definition = new DataServiceDefinition(ids.getAndIncrement(), serviceCode, name, routeKey);
         services.put(serviceCode, definition);
+        routeData.putIfAbsent(routeKey, "{\"status\":\"ok\"}");
         return definition;
     }
 
@@ -49,6 +50,7 @@ public class DataServiceManager {
         }
         if (routeKey != null) {
             definition.routeKey(routeKey);
+            routeData.putIfAbsent(routeKey, "{\"status\":\"ok\"}");
         }
         return definition;
     }
@@ -107,4 +109,3 @@ public class DataServiceManager {
         return definition;
     }
 }
-

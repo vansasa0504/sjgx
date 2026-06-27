@@ -23,6 +23,7 @@ export const createPartner = async (data: PartnerPayload) => unwrap<Partner>(awa
 export const updatePartner = async (id: number, data: PartnerPayload) => unwrap<Partner>(await api.put(`/partners/${id}`, data))
 export const submitPartner = async (id: number) => unwrap<Partner>(await api.post(`/partners/${id}/submit`))
 export const approvePartner = async (id: number) => unwrap<Partner>(await api.post(`/partners/${id}/approve`))
+export const admitPartner = async (id: number) => unwrap<Partner>(await api.post(`/partners/${id}/admit`))
 export const rejectPartner = async (id: number, reason: string) => unwrap<Partner>(await api.post(`/partners/${id}/reject`, { reason }))
 export const ratePartner = async (id: number, score: string) => unwrap<Partner>(await api.put(`/partners/${id}/rating`, { score }))
 export const terminatePartner = async (id: number) => unwrap<Partner>(await api.post(`/partners/${id}/terminate`))

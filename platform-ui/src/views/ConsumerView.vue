@@ -15,7 +15,13 @@
       </template>
     </PageTable>
     <FormDialog v-model="dialog.visible" :title="dialog.title" :fields="dialog.fields" :initial="dialog.initial" :submit="dialog.submit" @success="refresh" />
-    <el-drawer v-model="detailVisible" title="消费方详情"><pre>{{ detail }}</pre><h3>{{ drawerSection }}</h3><pre>{{ drawerData }}</pre></el-drawer>
+    <el-drawer v-model="detailVisible" title="消费方详情">
+      <pre v-if="drawerMode === 'detail'">{{ detail }}</pre>
+      <template v-else>
+        <h3>{{ drawerSection }}</h3>
+        <PageTable :key="`${drawerMode}-${detail?.id}`" :columns="drawerColumns" :fetch-data="fetchDrawerData" />
+      </template>
+    </el-drawer>
   </section>
 </template>
 
@@ -33,7 +39,7 @@ const tableRef = ref<{ refresh: () => Promise<void> }>()
 const detailVisible = ref(false)
 const detail = ref<Consumer>()
 const drawerSection = ref('详情')
-const drawerData = ref<unknown>()
+const drawerMode = ref<'detail' | 'audit' | 'logs'>('detail')
 const filters = [{ prop: 'keyword', label: '关键词' }, { prop: 'bizLine', label: '业务条线' }, { prop: 'status', label: '状态' }]
 const columns = [
   { prop: 'consumerCode', label: '编码' },
@@ -43,6 +49,13 @@ const columns = [
   { prop: 'complianceLevel', label: '合规等级' },
   { prop: 'status', label: '状态' },
   { prop: 'actions', label: '操作', width: 260 }
+]
+const drawerColumns = [
+  { prop: 'traceId', label: '追踪ID' },
+  { prop: 'eventType', label: '事件类型' },
+  { prop: 'serviceCode', label: '服务编码' },
+  { prop: 'status', label: '状态' },
+  { prop: 'createdAt', label: '时间' }
 ]
 const createFields: FormField[] = [
   { prop: 'code', label: '编码', type: 'input', required: true },
@@ -59,13 +72,18 @@ async function fetchData(params: PageQuery): Promise<Page<Consumer>> {
 function refresh() { tableRef.value?.refresh() }
 function openCreate() { dialog.value = { visible: true, title: '注册消费方', fields: createFields, initial: {}, submit: async (form) => { await registerConsumer(form as never) } } }
 function openQuota(row: Consumer) { dialog.value = { visible: true, title: '配置配额', fields: [{ prop: 'maxRequests', label: '最大请求数', type: 'number', required: true }, { prop: 'warnThreshold', label: '预警阈值', type: 'number' }], initial: { maxRequests: 1000, warnThreshold: 800 }, submit: async (form) => { await configureQuota(row.id, form as never) } } }
-async function openDetail(row: Consumer) { detail.value = await getConsumer(row.id); drawerSection.value = '详情'; drawerData.value = detail.value; detailVisible.value = true }
-async function openAudit(row: Consumer) { detail.value = row; drawerSection.value = '行为审计'; drawerData.value = await getConsumerAudit(row.id); detailVisible.value = true }
-async function openLogs(row: Consumer) { detail.value = row; drawerSection.value = '调用日志'; drawerData.value = await getConsumerLogs(row.id); detailVisible.value = true }
+async function openDetail(row: Consumer) { detail.value = await getConsumer(row.id); drawerMode.value = 'detail'; drawerSection.value = '详情'; detailVisible.value = true }
+async function openAudit(row: Consumer) { detail.value = row; drawerMode.value = 'audit'; drawerSection.value = '行为审计'; detailVisible.value = true }
+async function openLogs(row: Consumer) { detail.value = row; drawerMode.value = 'logs'; drawerSection.value = '调用日志'; detailVisible.value = true }
+async function fetchDrawerData(params: PageQuery) {
+  if (!detail.value) return { records: [], total: 0, current: Number(params.page || 1), size: Number(params.size || 10) }
+  if (drawerMode.value === 'audit') return getConsumerAudit(detail.value.id, params) as Promise<Page<Record<string, unknown>>>
+  return getConsumerLogs(detail.value.id, params) as Promise<Page<Record<string, unknown>>>
+}
 async function applyEvent(row: Consumer, event: string) {
   try { await ElMessageBox.confirm(`确认${event}？`); await applyConsumerEvent(row.id, event); refresh() } catch {}
 }
 function status(row: Consumer) { return String(row.status || '').toUpperCase() }
-function canSubmit(row: Consumer) { return auth.hasPermission('consumer:approve') && ['DRAFT', 'REGISTERED', 'PENDING'].includes(status(row)) }
-function canApprove(row: Consumer) { return auth.hasPermission('consumer:approve') && ['SUBMITTED', 'PENDING_APPROVAL', 'PENDING'].includes(status(row)) }
+function canSubmit(row: Consumer) { return auth.hasPermission('consumer:approve') && status(row) === 'REGISTERED' }
+function canApprove(row: Consumer) { return auth.hasPermission('consumer:approve') && status(row) === 'SUBMITTED' }
 </script>

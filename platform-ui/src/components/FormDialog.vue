@@ -65,7 +65,7 @@ const visible = computed({
 function applyInitial() {
   Object.keys(form).forEach((key) => delete form[key])
   props.fields.forEach((field) => {
-    form[field.prop] = props.initial[field.prop] ?? ''
+    form[field.prop] = props.initial[field.prop] ?? (field.type === 'number' ? undefined : '')
   })
 }
 
@@ -79,14 +79,16 @@ async function submitForm() {
   error.value = ''
   try {
     await formRef.value?.validate()
-    submitting.value = true
+  } catch {
+    return
+  }
+  submitting.value = true
+  try {
     await props.submit({ ...form })
     emit('success')
     visible.value = false
   } catch (err) {
-    if (err instanceof Error) {
-      error.value = err.message
-    }
+    error.value = err instanceof Error ? err.message : String(err)
   } finally {
     submitting.value = false
   }

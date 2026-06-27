@@ -33,6 +33,7 @@ vi.mock('../../api/partner', () => ({
   updatePartner: vi.fn(),
   submitPartner: vi.fn(),
   approvePartner: vi.fn(),
+  admitPartner: vi.fn(),
   rejectPartner: vi.fn(),
   ratePartner: vi.fn(),
   terminatePartner: vi.fn(),
@@ -57,6 +58,7 @@ vi.mock('../../api/service', () => ({
   updateService: vi.fn(),
   listServiceLogs: vi.fn().mockResolvedValue({ records: [], total: 0, current: 1, size: 10 }),
   testService: vi.fn(),
+  defineService: vi.fn(),
   publishService: vi.fn(),
   offlineService: vi.fn()
 }))
@@ -149,6 +151,18 @@ describe('M7-C pages', () => {
     expect(partnerApi.createPartner).toHaveBeenCalledWith({ name: '新合作方' })
   })
 
+  it('only shows partner state actions that match backend status transitions', async () => {
+    vi.mocked(partnerApi.listPartners).mockResolvedValueOnce({ records: [{ id: 1, name: '草稿合作方', status: 'DRAFT' }], total: 1, current: 1, size: 10 })
+    const draftWrapper = mount(PartnerView, { global })
+    await flushPromises()
+    expect(draftWrapper.text()).not.toContain('提交')
+
+    vi.mocked(partnerApi.listPartners).mockResolvedValueOnce({ records: [{ id: 2, name: '已注册合作方', status: 'REGISTERED' }], total: 1, current: 1, size: 10 })
+    const registeredWrapper = mount(PartnerView, { global })
+    await flushPromises()
+    expect(registeredWrapper.text()).toContain('提交')
+  })
+
   it('hides partner create button without permission', async () => {
     const auth = useAuthStore()
     auth.permissions = ['partner:view']
@@ -175,6 +189,17 @@ describe('M7-C pages', () => {
     expect(serviceApi.registerService).toHaveBeenCalled()
   })
 
+  it('loads service logs through paged table drawer', async () => {
+    vi.mocked(serviceApi.listServices).mockResolvedValueOnce([{ serviceCode: 'svc', name: '服务', routeKey: 'r', status: 'PUBLISHED' }])
+    vi.mocked(serviceApi.listServiceLogs).mockResolvedValueOnce({ records: [{ traceId: 'trace-1', status: 'SUCCESS' }], total: 1, current: 1, size: 10 })
+    const wrapper = mount(ServiceView, { global })
+    await flushPromises()
+    await (wrapper.vm as unknown as { openLogs: (row: { serviceCode: string }) => Promise<void> }).openLogs({ serviceCode: 'svc' })
+    await flushPromises()
+    expect(serviceApi.listServiceLogs).toHaveBeenCalledWith('svc', expect.objectContaining({ page: 1, size: 10 }))
+    expect(wrapper.text()).toContain('trace-1')
+  })
+
   it('loads catalog and searches', async () => {
     const wrapper = mount(CatalogView, { global })
     await flushPromises()
@@ -184,6 +209,17 @@ describe('M7-C pages', () => {
     expect(catalogApi.searchCatalog).toHaveBeenCalled()
   })
 
+  it('approves the application created for the selected catalog item', async () => {
+    vi.mocked(catalogApi.applyCatalog).mockResolvedValueOnce({ id: 99 })
+    const wrapper = mount(CatalogView, { global })
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('申请'))?.trigger('click')
+    await wrapper.findComponent({ name: 'FormDialog' }).props('submit')({ reason: '测试', scope: '回归' })
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('审批申请'))?.trigger('click')
+    expect(catalogApi.approveApplication).toHaveBeenCalledWith(99)
+  })
+
   it('loads consumers', async () => {
     const wrapper = mount(ConsumerView, { global })
     await flushPromises()
@@ -191,6 +227,17 @@ describe('M7-C pages', () => {
     await wrapper.findAll('button').find((button) => button.text().includes('注册消费方'))?.trigger('click')
     await wrapper.findComponent({ name: 'FormDialog' }).props('submit')({ code: 'c1', name: '消费方' })
     expect(consumerApi.registerConsumer).toHaveBeenCalled()
+  })
+
+  it('loads consumer audit and logs through paged table drawer', async () => {
+    vi.mocked(consumerApi.listConsumers).mockResolvedValueOnce([{ id: 1, name: '消费方A', status: 'ENABLED' }])
+    vi.mocked(consumerApi.getConsumerAudit).mockResolvedValueOnce({ records: [{ traceId: 'audit-1', eventType: 'APPROVE' }], total: 1, current: 1, size: 10 })
+    const wrapper = mount(ConsumerView, { global })
+    await flushPromises()
+    await (wrapper.vm as unknown as { openAudit: (row: { id: number; name: string }) => Promise<void> }).openAudit({ id: 1, name: '消费方A' })
+    await flushPromises()
+    expect(consumerApi.getConsumerAudit).toHaveBeenCalledWith(1, expect.objectContaining({ page: 1, size: 10 }))
+    expect(wrapper.text()).toContain('audit-1')
   })
 
   it('loads quality rules and checks', async () => {

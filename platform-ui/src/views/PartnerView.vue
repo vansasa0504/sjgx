@@ -10,7 +10,8 @@
         <el-button size="small" @click="openDetail(row as Partner)">详情</el-button>
         <el-button v-if="auth.hasPermission('partner:update')" size="small" @click="openEdit(row as Partner)">编辑</el-button>
         <el-button v-if="canSubmit(row as Partner)" size="small" @click="flow(row as Partner, 'submit')">提交</el-button>
-        <el-button v-if="canApprove(row as Partner)" size="small" type="success" @click="flow(row as Partner, 'approve')">准入</el-button>
+        <el-button v-if="canApprove(row as Partner)" size="small" type="success" @click="flow(row as Partner, 'approve')">审批</el-button>
+        <el-button v-if="canAdmit(row as Partner)" size="small" type="success" @click="flow(row as Partner, 'admit')">准入</el-button>
         <el-button v-if="canApprove(row as Partner)" size="small" type="warning" @click="openReject(row as Partner)">驳回</el-button>
         <el-button v-if="auth.hasPermission('partner:update')" size="small" @click="openRate(row as Partner)">评级</el-button>
         <el-button v-if="auth.hasPermission('partner:update')" size="small" @click="openInterface(row as Partner)">接口</el-button>
@@ -45,7 +46,7 @@ import PageTable from '../components/PageTable.vue'
 import FormDialog, { type FormField } from '../components/FormDialog.vue'
 import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
-import { approvePartner, configureInterface, createPartner, getPartner, listInterfaces, listPartnerEvents, listPartners, ratePartner, rejectPartner, submitPartner, terminatePartner, updatePartner } from '../api/partner'
+import { admitPartner, approvePartner, configureInterface, createPartner, getPartner, listInterfaces, listPartnerEvents, listPartners, ratePartner, rejectPartner, submitPartner, terminatePartner, updatePartner } from '../api/partner'
 import type { Page, PageQuery, Partner } from '../api/types'
 
 const auth = useAuthStore()
@@ -154,11 +155,12 @@ async function openDetail(row: Partner) {
   detailVisible.value = true
 }
 
-async function flow(row: Partner, action: 'submit' | 'approve' | 'terminate') {
+async function flow(row: Partner, action: 'submit' | 'approve' | 'admit' | 'terminate') {
   try {
     await ElMessageBox.confirm(`确认执行 ${action}？`)
     if (action === 'submit') await submitPartner(row.id)
     if (action === 'approve') await approvePartner(row.id)
+    if (action === 'admit') await admitPartner(row.id)
     if (action === 'terminate') await terminatePartner(row.id)
     ElMessage.success('操作成功')
     refresh()
@@ -171,12 +173,15 @@ function normalizedStatus(row: Partner) {
   return String(row.status || '').toUpperCase()
 }
 function canSubmit(row: Partner) {
-  return auth.hasPermission('partner:approve') && ['DRAFT', 'REGISTERED', 'PENDING'].includes(normalizedStatus(row))
+  return auth.hasPermission('partner:approve') && normalizedStatus(row) === 'REGISTERED'
 }
 function canApprove(row: Partner) {
-  return auth.hasPermission('partner:approve') && ['SUBMITTED', 'PENDING_APPROVAL', 'PENDING'].includes(normalizedStatus(row))
+  return auth.hasPermission('partner:approve') && normalizedStatus(row) === 'SUBMITTED'
+}
+function canAdmit(row: Partner) {
+  return auth.hasPermission('partner:approve') && normalizedStatus(row) === 'APPROVED'
 }
 function canTerminate(row: Partner) {
-  return auth.hasPermission('partner:approve') && ['ACTIVE', 'ADMITTED', 'APPROVED'].includes(normalizedStatus(row))
+  return auth.hasPermission('partner:approve') && ['ADMITTED', 'RATED', 'SUSPENDED'].includes(normalizedStatus(row))
 }
 </script>

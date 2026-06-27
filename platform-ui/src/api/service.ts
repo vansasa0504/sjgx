@@ -12,6 +12,7 @@ export const getService = async (serviceCode: string) => unwrap<DataServiceDefin
 export const registerService = async (data: ServicePayload) => unwrap<DataServiceDefinition>(await api.post('/services', data))
 export const updateService = async (serviceCode: string, data: Omit<ServicePayload, 'serviceCode'>) => unwrap<DataServiceDefinition>(await api.put(`/services/${serviceCode}`, data))
 export const testService = async (serviceCode: string) => unwrap<DataServiceDefinition>(await api.post(`/services/${serviceCode}/test`))
+export const defineService = async (serviceCode: string) => unwrap<DataServiceDefinition>(await api.post(`/services/${serviceCode}/define`))
 export const publishService = async (serviceCode: string) => unwrap<DataServiceDefinition>(await api.post(`/services/${serviceCode}/publish`))
 export const offlineService = async (serviceCode: string) => unwrap<DataServiceDefinition>(await api.post(`/services/${serviceCode}/offline`))
 export const listServiceLogs = async (serviceCode: string, params: PageQuery = {}) => unwrap<Page<unknown>>(await api.get(`/services/${serviceCode}/logs`, { params }))

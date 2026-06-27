@@ -20,7 +20,14 @@
         <el-button size="small" @click="openMeta(item)">元信息</el-button>
         <el-button size="small" @click="openPreview(item)">预览</el-button>
         <el-button v-if="auth.hasPermission('catalog:apply')" size="small" type="primary" @click="openApply(item)">申请</el-button>
-        <el-button v-if="auth.hasPermission('catalog:approve')" size="small" type="success" @click="approveLastApplication">审批申请</el-button>
+        <el-button
+          v-if="auth.hasPermission('catalog:approve') && pendingApplicationId(item)"
+          size="small"
+          type="success"
+          @click="approveApplicationFor(item)"
+        >
+          审批申请
+        </el-button>
       </el-card>
     </div>
     <FormDialog v-model="applyDialog.visible" title="申请使用" :fields="applyFields" :initial="{}" :submit="submitApply" @success="load" />
@@ -43,7 +50,7 @@ const keyword = ref('')
 const filters = ref({ subject: '', partnerId: '', dataType: '', scenario: '' })
 const items = ref<CatalogItem[]>([])
 const current = ref<CatalogItem>()
-const lastApplicationId = ref<number>()
+const pendingApplicationIds = ref<Record<number, number>>({})
 const drawerVisible = ref(false)
 const selectedDetail = ref<unknown>()
 const previewSample = ref<Record<string, unknown>[]>([])
@@ -73,11 +80,18 @@ function openApply(item: CatalogItem) { current.value = item; applyDialog.value.
 async function submitApply(form: Record<string, unknown>) {
   if (current.value) {
     const application = await applyCatalog(current.value.id, form as never) as { id?: number }
-    lastApplicationId.value = application.id
+    if (application.id) pendingApplicationIds.value[current.value.id] = application.id
   }
 }
-async function approveLastApplication() {
-  if (lastApplicationId.value) await approveApplication(lastApplicationId.value)
+function pendingApplicationId(item: CatalogItem) {
+  return pendingApplicationIds.value[item.id]
+}
+async function approveApplicationFor(item: CatalogItem) {
+  const applicationId = pendingApplicationId(item)
+  if (applicationId) {
+    await approveApplication(applicationId)
+    delete pendingApplicationIds.value[item.id]
+  }
 }
 onMounted(load)
 </script>

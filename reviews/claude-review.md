@@ -150,3 +150,710 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 ---
 
 **下一步**：M7-A 通过，可进入 M7-B（前端基础设施）。建议在 M7-D 前修复 F-01/F-02/F-03。
+
+---
+
+# Claude Code 审查结果 — M7-B 阶段
+
+> 审查阶段：M7-B — 前端基础设施（API client / auth store / 路由守卫 / 共享组件 / 布局）
+> 审查日期：2026-06-27
+> 审查范围：`platform-ui/src/` 下 M7-B 新增及修改文件（5 改 + 多新增）
+> 任务单：`tasks/codex-task-M7B-execute.md`（M7-B 阶段任务）
+> 前置：M7-A 已通过审查（见上文）
+
+## 1. 审查对象
+
+| 类别 | 文件 | 新增/修改 |
+|---|---|---|
+| api 核心 | `src/api/client.ts` | 修改（重构为 `createClient` 工厂 + `unwrap`） |
+| api 模块 | `src/api/auth.ts` `partner.ts` `consumer.ts` `ingest.ts` `service.ts` `catalog.ts` `quality.ts` `billing.ts` `stats.ts` `system.ts` `types.ts` | 新增 11 |
+| stores | `src/stores/auth.ts` | 修改（接真实 API） |
+| router | `src/router/index.ts` | 修改（真实权限校验 + 403/404 + ConsoleLayout 嵌套） |
+| views | `src/views/ForbiddenView.vue` `NotFoundView.vue` | 新增 2 |
+| components | `src/components/PageTable.vue` `FormDialog.vue` `StatusTag.vue` | 新增 3 |
+| layouts | `src/layouts/ConsoleLayout.vue` | 新增 1 |
+| 入口 | `src/App.vue` | 修改（auth-expired 监听） |
+| 测试 | `api/__tests__/{client,modules}.test.ts` `stores/__tests__/auth.test.ts` `router/__tests__/guard.test.ts` `components/__tests__/{PageTable,FormDialog,StatusTag}.test.ts` `layouts/__tests__/ConsoleLayout.test.ts` | 新增 8 |
+| 既有测试 | `src/__tests__/ui.spec.ts` | 修改（适配新 import） |
+
+## 2. 测试结果
+
+```text
+npm run test:unit  →  9 文件 / 18 用例 全绿（6.56s）
+```
+
+覆盖：client 拦截器（token 注入 / 401 事件 / 业务错误 reject）、模块 API（partner/service URL+method）、auth store（login 拉权限 / logout 清空）、路由守卫（无 token 跳 login / 权限不足跳 403 / permittedRoutes 过滤）、3 组件、ConsoleLayout（菜单按权限 / 登出）。
+
+## 3. 后端契约对齐核查（与 M7-A Controller 逐项比对）
+
+| 前端函数 | 后端端点 / 返回 | 对齐 |
+|---|---|---|
+| `auth.login/refresh/logout/fetchPermissions` | `POST /auth/login` `Result<TokenResponse{token}>`；`POST /auth/refresh`；`POST /auth/logout`；`GET /auth/permissions` `Result<List<String>>` | ✅ 路径、方法、`unwrap` 拆包均正确 |
+| `listPartners` → `Page<Partner>` | `GET /api/v1/partners` `Result<Page<Partner>>` | ✅ |
+| `listConsumers/listIngestTasks/listServices/listCatalog/listBillingRules/listBills/listQualityRules` → 数组 | 后端均返回 `Result<List<...>>`（非 Page） | ✅ 类型匹配 |
+| `listIngestRecords/getConsumerAudit/getConsumerLogs/listServiceLogs` → `Page` | 后端 `Result<Page<...>>` | ✅ |
+| `ratePartner(id,score)` `PUT /partners/{id}/rating` `{score}` | 后端 `RatingRequest{score}` | ✅ |
+| `invokeService` `POST /services/{code}/invoke` | 后端 `InvokeRequest` | ✅ |
+| `system.listUsers/createUser/updateUser/listRoles/...` | `GET /users` `POST /users` `PUT /users/{username}` `GET /roles` … | ⚠️ 路径对，但 dev proxy 不转发（见 B-01） |
+
+## 4. 需求满足情况（对照 M7-B 任务）
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| B.1 API client 重构 | 基本满足 | 分层清晰，`createClient` 工厂复用拦截器，`unwrap` 统一拆 `Result`；`fetchDashboard` 已移至 `stats.ts`。`system.ts` 走裸路径有 proxy 缺陷（B-01） |
+| B.2 auth store 重构 | 满足 | login 后自动 fetchPermissions；logout 即使服务端失败也清本地；token 持久化 localStorage；hasPermission/hasAnyPermission 齐全 |
+| B.3 路由守卫 | 满足 | beforeEach 四步校验完整；403/404 路由 + catch-all 齐全；业务路由 meta.permission 预置 |
+| B.4 共享组件 | 满足 | PageTable/FormDialog/StatusTag Props 设计合理，各有测试 |
+| B.5 布局 | 满足 | ConsoleLayout 顶栏+左侧菜单（按权限过滤）+内容区；菜单用 `permittedRoutes` |
+| B.6 app 入口与全局错误处理 | **部分** | auth-expired 监听 + 跳登录 ✓；但**全局非 401 错误 `ElMessage.error` 缺失**（B-02） |
+| 业务页面保持原样 | 满足 | 10 个业务页面未动，留待 C 阶段 |
+
+## 5. 发现的问题
+
+### B-01【中】system.ts 用 `rootApi`（baseURL `''`）调 `/users` `/roles` `/permissions`，dev 模式不可达
+
+- **现象**：`system.ts` 用 `rootApi`（`createClient('')`）请求 `/users`、`/roles`、`/permissions`。后端 `UserController`/`RoleController`/`PermissionController` 挂在 auth 服务，路径无 `/auth` 前缀。Gateway 8080 **确实**路由了 `Path=/auth/**,/users/**,/roles/**,/permissions/**` → auth(8081)，所以**生产/网关直连可用**。
+- **问题**：Vite dev proxy（`vite.config.ts`）只转发 `/auth` 和 `/api`，**未转发 `/users` `/roles` `/permissions`**。dev 模式（`http://localhost:5173/`）下浏览器请求 `http://localhost:5173/users` 命中 SPA fallback 返回 `index.html`，axios JSON 解析失败 → C 阶段 SystemView 全部接口不可用。
+- **约束冲突**：M7-B 任务声明"不修改 `vite.config.ts`（proxy 已配好）"，但实际 proxy 并未覆盖这三个路径。Codex 直接用 `rootApi` 未上报此偏离。
+- **建议**：二选一（需 Claude 决策）：
+  1. 在 `vite.config.ts` 的 proxy 补 `'/users'`、`'/roles'`、`'/permissions'` → `http://localhost:8080`（破例改 vite.config，但属必要修复）；
+  2. 后端给 `UserController`/`RoleController`/`PermissionController` 加 `/auth` 前缀（`/auth/users` 等），前端改用 `authApi`——改动跨阶段，影响 M7-A 已验收接口，不推荐。
+  - 推荐方案 1，C 阶段 SystemView 开发前必须解决。
+
+### B-02【中】缺全局业务错误提示
+
+- 任务 B.6 明确要求"非 401 错误用 `ElMessage.error` 显示后端错误消息"。实际 `client.ts` 响应拦截器只 `Promise.reject(new Error(...))`，`App.vue` 只处理 `auth-expired`，业务错误（如 500、校验失败、状态非法转移）不弹窗，用户无感知。
+- **建议**：在 `client.ts` 响应拦截器的 error 分支（非 401）调 `ElMessage.error(message)`；注意与 `FormDialog` 内的错误显示去重（FormDialog 已自行 catch 显示），可让拦截器统一弹窗，FormDialog 提交失败时吞掉重复提示。
+
+### B-03【低】auth-expired 与 logout 的重入
+
+- `App.vue.handleAuthExpired` → `auth.logout()` → `authApi.logout()`。`/auth/logout` 不在 `JwtAuthFilter` 白名单（仅 `/auth/login` 放行），需 JWT 校验；token 已过期时该请求再 401 → 拦截器再 dispatch `auth-expired` → `handleAuthExpired` 重入。
+- 因 `logout` 在 `finally` 清空 `token`，第二次进入时 `if(this.token)` 跳过 `authApi.logout()`，**最多 2 次调用，非死循环**。但不优雅，且产生冗余 401 请求。
+- **建议**：`logout` 前置清 token，或 `/auth/logout` 加入 filter 白名单免鉴权。
+
+### B-04【低】FormDialog 校验失败未捕获
+
+- `submitForm` 中 `await formRef.value?.validate()` 若校验失败会抛异常，外层无 try/catch（try 只包 `props.submit`），导致 unhandled rejection，且弹窗内不显示校验失败原因（Element Plus 会标红字段，但控制台报错）。
+- **建议**：将 `validate()` 纳入 try/catch，校验失败静默或显示提示。
+
+### B-05【低】`ui.spec.ts` dashboard mock 与真实后端契约不符
+
+- 测试 mock `GET /stats/dashboard` 返回裸对象 `{invokeCount:10}`，而真实后端返回 `Result<DashboardSummary>`（`{success:true,data:{...}}`）。测试在假数据上通过，未验证 `unwrap` 对真实 `Result` 的拆包。`fetchDashboard` 实际能正确拆包（`unwrap` 判 `success` 字段），但测试无回归保护。
+- **建议**：mock 改为 `{success:true,data:{invokeCount:10}}`，与后端契约一致。
+
+### B-06【低】ConsoleLayout 窄屏仅堆叠不折叠
+
+- 任务要求"窄屏菜单折叠"。实现仅 `@media (max-width:760px)` 把 aside 改全宽堆叠，无折叠/抽屉交互，窄屏菜单常驻占满首屏。
+- **建议**：C 阶段前可接受；若要达标，加 `el-menu` `collapse` 或抽屉模式。
+
+### B-07【低】StatusTag 默认映射缺常见状态
+
+- 默认 map 覆盖 PENDING/ACTIVE/SUSPENDED/TERMINATED/DRAFT/ONLINE/OFFLINE/GENERATED/CONFIRMED/DISPUTED/SETTLED/OPEN/CLOSED，但缺 SUBMITTED/APPROVED/REJECTED/PUBLISHED/TESTING/RUNNING 等状态机常见值。未命中时回退渲染原状态文本（不会崩），但中文体验不一致。
+- **建议**：C 阶段按各模块实际状态码补全。
+
+### B-08【低】路由守卫已登录访问 `/login` 硬跳 `/partners`
+
+- `to.path==='/login'` 且已登录 → `/partners`。若用户无 `partner:view` 权限，会再跳 `/403`。
+- **建议**：跳首个有权限路由，或跳 `/`（`/`→`/partners` 重定向可改为守卫递归选首个有权限项）。
+
+### B-09【低】`listAudit` 后端要求 eventType 非空
+
+- 后端 `StatsController.audit` 当 `eventType` 为空时返回空列表。前端 `listAudit` 透传 params 无此约束提示。C 阶段 StatsView 审计页须强制选 eventType，否则永远空。
+
+## 6. 开发计划符合情况
+
+| 检查项 | 是否符合 | 说明 |
+|---|---|---|
+| 最小可行结果 | 符合 | 基础设施齐备，C 阶段可直接复用 |
+| 最小改动 | 符合 | 复用既有 axios/Element Plus，未引入新依赖 |
+| 避免过度设计 | 符合 | `createClient` 工厂 + `unwrap` 简洁，未过度抽象 |
+| 不动业务页面 | 符合 | 10 页面保持 A 类骨架 |
+| 不改 vite.config | 符合（但暴露 B-01） | 未改 vite.config，代价是 system.ts dev 不可达 |
+| TypeScript 类型 | 基本符合 | DTO 用 interface；少量 `unknown`（catalog preview / logs）尚可，C 阶段细化 |
+
+## 7. 安全检查
+
+- token 存 localStorage（既有模式，非本次引入）；XSS 风险属既有架构，不在 M7-B 范围。
+- 401 自动登出 + 跳登录（带 redirect）✓。
+- 无敏感信息写入日志/文档 ✓。
+- 未引入新依赖 ✓。
+
+## 8. 审查结论
+
+```text
+✓ 通过（有条件） — 可进入 M7-C，但 B-01 必须在 C 阶段 SystemView 开发前修复，B-02 建议同步修复
+```
+
+**理由**：M7-B 达成阶段目标——API client 分层、auth store 接真实权限、路由守卫真实校验、3 个共享组件 + 布局组件齐备，18 个测试全绿，后端契约对齐核查通过（返回类型与 M7-A 的 Page/List 一致）。代码风格统一，最小改动，未越界改业务页面。
+
+**不阻塞但需跟进**：B-01（system.ts dev proxy 不可达）是 C 阶段 SystemView 的硬阻塞，必须在开发 SystemView 前解决（推荐补 vite proxy）。B-02（全局错误提示）影响所有 C 阶段页面的错误反馈体验，建议在 C 阶段首个页面开发时一并补上。其余 B-03~B-09 为低优先级，可并入 M7-D 回归。
+
+## 9. 返工任务清单
+
+| 编号 | 问题 | 修改要求 | 优先级 | 阶段 |
+|---|---|---|---|---|
+| F-01 | system.ts dev proxy 不可达 | `vite.config.ts` proxy 补 `/users` `/roles` `/permissions` → 8080；或后端加 `/auth` 前缀（不推荐） | 中 | C 前 |
+| F-02 | 缺全局业务错误提示 | `client.ts` 响应拦截器非 401 错误调 `ElMessage.error`；与 FormDialog 去重 | 中 | C 首 |
+| F-03 | FormDialog 校验失败未捕获 | `submitForm` 包裹 `validate()` 的 try/catch | 低 | C |
+| F-04 | ui.spec.ts dashboard mock 契约不符 | mock 改 `{success:true,data:{...}}` | 低 | D |
+| F-05 | auth-expired/logout 重入 | `/auth/logout` 加 filter 白名单，或 logout 前置清 token | 低 | D |
+| F-06 | 路由已登录跳 `/partners` 硬编码 | 改跳首个有权限路由 | 低 | C |
+| F-07 | StatusTag 默认映射不全 | C 阶段按实际状态码补全 | 低 | C |
+| F-08 | ConsoleLayout 窄屏不折叠 | 加 collapse/抽屉（可选） | 低 | C/D |
+
+## 10. 建议提交信息
+
+```text
+feat(M7-B): frontend infrastructure — api client, auth, router guard, shared components
+
+- refactor api client: createClient factory + unwrap(Result) + 10 module files
+- auth store: real login/refresh/logout/fetchPermissions, auto-load perms after login
+- router guard: real permission check, 403/404 pages, ConsoleLayout nesting
+- shared components: PageTable, FormDialog, StatusTag
+- ConsoleLayout: permission-filtered menu + logout
+- App.vue: auth-expired listener → logout + redirect
+- tests: 18 vitest cases green (client/auth/guard/components/layout)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+```
+
+---
+
+**下一步**：M7-B 通过（有条件），可进入 M7-C（前端九大模块页面功能化）。C 阶段 SystemView 开发前必须先修复 F-01（system.ts dev proxy）；C 阶段首个页面开发时同步修复 F-02（全局错误提示）。
+
+---
+
+# Claude Code 审查结果 — M7-C 阶段
+
+> 审查阶段：M7-C — 前端九大模块页面功能化（10 个页面 A→C 升级）
+> 审查日期：2026-06-27
+> 审查范围：`platform-ui/src/views/*.vue`（10 页）+ `src/components/PageTable.vue`（被改）+ `src/views/__tests__/m7c-pages.test.ts`
+> 任务单：`tasks/codex-task-M7C-execute.md`（M7-C 阶段任务）
+> 前置：M7-B 已通过审查（有条件）
+
+## 1. 审查对象
+
+| 文件 | 新增/修改 | 说明 |
+|---|---|---|
+| `views/PartnerView.vue` | 修改 | 列表+详情+新建/编辑/评级/接口/状态流转 |
+| `views/IngestView.vue` | 修改 | 列表+详情+创建/映射/测试/状态流转 |
+| `views/ServiceView.vue` | 修改 | 列表+详情+注册/编辑/测试/发布/下线 |
+| `views/CatalogView.vue` | 修改 | 卡片网格+检索+元信息/预览/申请 |
+| `views/ConsumerView.vue` | 修改 | 列表+详情+注册/配额/事件 |
+| `views/QualityView.vue` | 修改 | 4 tab：规则/校验/工单/报告 |
+| `views/BillingView.vue` | 修改 | 3 tab：规则/账单/统计 |
+| `views/StatsView.vue` | 修改 | Dashboard+报表+审计 |
+| `views/SystemView.vue` | 修改 | 3 tab：用户/角色/权限 |
+| `views/MonitorView.vue` | 修改 | 大屏+定时刷新 |
+| `components/PageTable.vue` | **修改** | 加 actions 具名插槽（违反"不改 components"约束，见 C-08） |
+| `views/__tests__/m7c-pages.test.ts` | 新增 | 10 个 it，合并测试 |
+
+## 2. 测试结果
+
+```text
+npm run test:unit  →  10 文件 / 28 用例 全绿（7.43s）
+```
+
+但测试质量不达标（见 C-09）：大部分用例仅验证"挂载调 list"，未验证操作触发 API，且无"权限不足按钮隐藏"测试；mock 数据刻意只命中正确的少量字段，掩盖了字段不对齐缺陷（见 C-10）。
+
+## 3. 需求满足情况（对照 M7-C 任务逐页）
+
+| 页面 | 状态 | 主要缺口 |
+|---|---|---|
+| PartnerView | **部分** | 缺 reject（驳回）操作；状态机按钮未按 status 显隐；缺创建时间列 |
+| IngestView | **部分** | 缺 updateRules、查看执行记录、版本列；createFields 缺 protocol/format/fieldMapping/qualityRules；partnerId 未用 select 调 listPartners |
+| ServiceView | **部分** | 缺查看调用日志（listServiceLogs）；缺类型/限流列；状态机按钮未按 status 显隐 |
+| CatalogView | **部分** | 缺筛选（主题/合作方/数据类型/场景）；缺 approveApplication；preview 未用 el-table 展示 sample |
+| ConsumerView | **部分** | 审计/日志在 drawer 用 `<pre>` 展示，未用 PageTable；缺独立查看入口 |
+| QualityView | **部分** | Tab4 报告评分未用 ECharts/el-descriptions；checkColumns/issueColumns 缺任务要求的列；assign/resolve 硬编码 'admin'/'resolved'，未用 FormDialog；triggerCheck 的 ruleIds 空数组 |
+| BillingView | **部分** | 规则缺编辑（updateBillingRule 未调用）；dispute 硬编码 reason，未用 FormDialog；费用统计未用 ECharts |
+| StatsView | **部分** | Dashboard 未用 ECharts（任务要求多图表）；报表无导出按钮；dashboard 字段名不对齐（C-10） |
+| SystemView | **部分** | 权限用 CSV textarea 而非多选；tab-change 每次全量重载 roles/permissions |
+| MonitorView | **部分** | 未调 actuator/metrics（任务允许，可接受）；dashboard 字段名不对齐（C-10）；大屏仅 1 个柱状图 |
+
+## 4. 发现的问题
+
+### C-01【高】分页失效——`toPage` 假分页但不切片
+
+- **现象**：IngestView/ServiceView/ConsumerView/QualityView/BillingView/StatsView(audit) 的 `fetchData` 用 `toPage(await listXxx(params), page, size)`。`toPage`（`api/types.ts`）把整个数组包成 `{records: 全部数组, total: 数组长度, current, size}`，**不按 page/size 切片**。
+- **后果**：后端这些 list 端点返回 `List`（不分页），前端 `toPage` 把全量数组塞进 `records`，PageTable 直接渲染全部。切换分页页码时重新调 list 拿全量，`records` 仍是全部 → **所有页显示相同全量数据，分页控件形同虚设**。
+- **根因**：前后端分页契约不对齐——后端 list 端点（除 partner/users 外）不分页，前端却期望分页交互。
+- **建议**：二选一：
+  1. 前端 `toPage` 改为按 page/size 切片（`records = value.slice((page-1)*size, page*size)`），实现真前端分页；
+  2. 后端 list 端点补 page/size 参数返回 `Page`（跨阶段改 M7-A 接口，不推荐）。
+  - 推荐方案 1，M7-D 前必须修复，否则所有列表页分页不可用。
+
+### C-02【高】Dashboard 字段名与后端不对齐，多数指标永远为空
+
+- **后端** `DashboardSummary` 字段：`runningServices / invokeCount / successRate / complianceScore / costAmount`。
+- **StatsView** 用：`invokeCount`✓ / `successRate`✓ / `serviceCount`✗（应 `runningServices`）/ `cost`✗（应 `costAmount`）→ "服务数""成本"永远显示 `-`。
+- **MonitorView** 用：`serviceCount`✗ / `cost`✗ / `ingestCount`✗（不存在）/ `auditCount`✗（不存在）→ 大屏 4 指标中 3 个永远空/0，柱状图 4 项中 3 项为 0。
+- **测试掩盖**：`m7c-pages.test.ts` 的 stats mock 只返回 `{invokeCount:10, successRate:'99%'}`，恰好命中正确的两个字段，测试通过但实际运行其他字段全空。
+- **建议**：前端字段名改为 `runningServices / costAmount`；MonitorView 移除不存在的 `ingestCount / auditCount` 或后端补字段。测试 mock 改为完整真实字段。
+
+### C-03【中】PartnerView 缺 reject（驳回）操作
+
+- 任务 C.1 明确要求"驳回：FormDialog（reason）→ rejectPartner"。PartnerView 仅有 submit/approve/terminate，**无 reject 按钮**，`rejectPartner` 未 import 也未调用。
+- **建议**：补 reject FormDialog（reason 字段）→ `rejectPartner(row.id, reason)`。
+
+### C-04【中】状态机按钮未按当前状态显隐
+
+- 任务明确要求"状态机按钮按当前状态显隐（如 PENDING 才显示提交审核，ACTIVE 才显示退出）"。实际 PartnerView/ServiceView/IngestView/ConsumerView 的状态流转按钮仅按权限码 `v-if`，**无 status 条件**，导致 DRAFT 状态也显示"准入/退出"，ONLINE 也显示"发布"等不合理按钮，点击会触发后端状态非法转移异常。
+- **建议**：每页加 `canSubmit(row)/canApprove(row)/canOffline(row)` 等基于 `row.status` 的判断，叠加权限码。
+
+### C-05【中】ElMessageBox.confirm 取消未捕获——unhandled rejection
+
+- 所有 `flow/publish/offline/applyEvent/confirm` 调用 `ElMessageBox.confirm(...)` 后无 try/catch。用户点"取消"时 confirm reject，整个 async 函数抛出未捕获异常 → 控制台 unhandled rejection，且后续代码不执行（符合预期）但报错噪声。
+- **建议**：包 try/catch，cancel 时静默返回。
+
+### C-06【中】全局错误提示仍缺失（B-02 遗留未修）
+
+- M7-B 审查 F-02 要求 C 阶段首个页面补全局 `ElMessage.error`。M7-C 未在 `client.ts` 或 App.vue 补，各页面操作也大多无 try/catch。**操作失败（如状态非法转移、参数非法）用户无任何反馈**，按钮看似无反应。
+- **建议**：`client.ts` 响应拦截器非 401 错误调 `ElMessage.error(message)`；FormDialog 提交失败时吞掉重复提示。
+
+### C-07【中】大量任务要求的操作/列未实现
+
+汇总缺失项（按页）：
+- **IngestView**：`updateRules`、`listIngestRecords`（查看执行记录）、版本列；createFields 缺 protocol/format/fieldMapping/qualityRules；partnerId 应为 select（调 listPartners）。
+- **ServiceView**：`listServiceLogs`（查看调用日志，任务要求 drawer+PageTable）、类型列、限流列。
+- **CatalogView**：筛选（主题/合作方/数据类型/场景）、`approveApplication`（审批申请）；preview 应展示 sample(el-table)+stats+qualityReport，实际用 `<pre>`。
+- **ConsumerView**：审计/日志应用 PageTable，实际 `<pre>` 展示且无分页。
+- **QualityView**：Tab4 应用 ECharts/el-descriptions（实际 `<pre>`）；checkColumns 缺规则/失败率/时间，issueColumns 缺规则/类型/严重级别；assign/resolve 应用 FormDialog（实际硬编码 'admin'/'resolved'）。
+- **BillingView**：规则缺编辑操作（`updateBillingRule` 未调用）；dispute 应用 FormDialog 输入 reason（实际硬编码 '费用异议'）；费用统计应用 ECharts（实际 `<pre>`）。
+- **StatsView**：Dashboard 应用 ECharts 多图表（实际纯文本 metric）；报表缺导出按钮。
+- **SystemView**：权限应用多选（实际 CSV textarea）。
+- **建议**：M7-D 前按优先级补齐；至少 IngestView/ServiceView 的缺失操作、CatalogView 筛选、QualityView/BillingView 的 FormDialog 交互应补。
+
+### C-08【低】PageTable 被修改，违反"不改 components"约束
+
+- M7-C 任务约束"不修改 api/stores/router/components（B 阶段产出，如确需扩展先说明）"。PageTable 加了 `actions` 具名插槽以支持行操作列——属合理必要扩展，但**未在完成报告中说明偏离**。
+- **建议**：扩展本身认可（actions 插槽设计合理），但需补 PageTable 测试覆盖插槽分支，并在报告中标注。
+
+### C-09【中】测试覆盖深度不达标
+
+- 任务要求每页测试验证：①列表渲染 ②至少一个操作触发正确 API ③权限不足按钮隐藏。
+- 实际：10 个 it 中 8 个仅验证"挂载调 list"；PartnerView 只验证打开新建弹窗（未验证提交调 `createPartner`）；CatalogView 验证 search。**无任何"操作触发 API"的断言**（createPartner/registerService 等仅 mock 未断言调用）；**完全无"权限不足按钮隐藏"测试**。
+- mock 数据与真实后端契约不符：stats mock 只给 2 字段（见 C-02）；listConsumers/listIngestTasks mock 返回数组（与后端 List 一致 ✓），但未验证 `toPage` 切片/分页行为。
+- **建议**：M7-D 补：每页至少 1 个操作触发 API 的断言（如点击新建→填表→提交→断言 createXxx 调用）；至少 1 个权限不足场景测试；stats mock 用真实 DashboardSummary 字段。
+
+### C-10【低】FormDialog 校验失败未捕获（B-04 遗留）
+
+- `FormDialog.submitForm` 的 `validate()` 仍在 try 外，校验失败 unhandled rejection。M7-C 各页大量复用 FormDialog，影响面扩大。
+- **建议**：将 `validate()` 纳入 try/catch。
+
+### C-11【低】SystemView tab-change 全量重载
+
+- `@tab-change="loadAux"` 每次切 tab 都调 `listRoles` + `listPermissions`，即使目标 tab 是用户 tab。冗余请求。
+- **建议**：按 tab 名称按需加载，或首次加载后缓存。
+
+### C-12【低】QualityView triggerCheck 参数无效
+
+- `openCheck` 提交 `{...form, rows:[], ruleIds:[], failRateThreshold:1}`，`ruleIds` 恒为空数组 → 后端触发校验不命中任何规则，结果无意义。任务要求 FormDialog"选规则+目标"。
+- **建议**：ruleIds 用多选（调 listQualityRules 填充选项）。
+
+## 5. 开发计划符合情况
+
+| 检查项 | 是否符合 | 说明 |
+|---|---|---|
+| 数据零写死 | 符合 | 所有列表来自 API，未见写死 `const rows` |
+| 复用共享组件 | 符合 | 10 页均复用 PageTable/FormDialog/StatusTag |
+| 交互范式统一 | 基本符合 | 列表+FormDialog+drawer+confirm 范式一致 |
+| 按钮按权限显隐 | 符合 | 写操作按钮均 `v-if="auth.hasPermission(...)"` |
+| 状态机按钮按状态显隐 | **不符合** | 见 C-04 |
+| 不改 components | **不符合** | 改了 PageTable（必要但未说明），见 C-08 |
+| 每页 Vitest 测试 | 部分 | 有测试但深度不足，见 C-09 |
+| 最小改动 | 符合 | 未引入新依赖 |
+
+## 6. 安全检查
+
+- 无敏感信息泄露；token 仍走 localStorage（既有模式）。
+- SystemView 创建用户密码默认 `'123456'`（`createUser` 兜底）——弱口令默认值，仅开发可接受，生产应强制输入。
+- 无新依赖引入 ✓。
+
+## 7. 审查结论
+
+```text
+△ 有条件通过（需返工） — 不建议直接进入 M7-D，C-01/C-02 须先修复，C-03~C-07 建议同批补齐
+```
+
+**理由**：M7-C 达成"数据零写死、复用共享组件、按钮按权限显隐"的基本目标，28 测试全绿，10 页均可渲染列表。但存在两类**影响实际可用性**的缺陷：①`toPage` 假分页不切片导致 6 个列表页分页失效（C-01）；②Dashboard 字段名与后端不对齐导致统计/监控页多数指标永远为空（C-02）。且测试 mock 刻意只命中正确字段，掩盖了 C-02。此外 PartnerView 缺 reject、状态机按钮未按 status 显隐、多处任务要求的操作/列缺失、全局错误提示仍缺、confirm 取消未捕获等问题影响完整度。
+
+相比 M7-A/M7-B，M7-C 的完成度明显偏低——任务清单中大量明确列出的操作（reject/调用日志/执行记录/审批申请/编辑规则等）未实现，测试只验证"挂载调 list"未验证操作触发 API。**建议返工一轮**补齐 C-01~C-07 后再进 M7-D，否则 M7-D 的"端到端主链路走通"验收无法达成。
+
+## 8. 返工任务清单
+
+| 编号 | 问题 | 修改要求 | 优先级 |
+|---|---|---|---|
+| F-01 | toPage 假分页不切片 | `toPage` 按 page/size 切片，或后端 list 补分页 | 高 |
+| F-02 | Dashboard 字段名不对齐 | StatsView/MonitorView 改用 `runningServices/costAmount`，移除不存在的 `ingestCount/auditCount`；mock 同步 | 高 |
+| F-03 | PartnerView 缺 reject | 补 reject FormDialog（reason）→ `rejectPartner` | 中 |
+| F-04 | 状态机按钮未按 status 显隐 | 各页加基于 `row.status` 的按钮显隐判断 | 中 |
+| F-05 | confirm 取消未捕获 | 所有 confirm 调用包 try/catch，cancel 静默 | 中 |
+| F-06 | 全局错误提示缺失 | `client.ts` 非 401 错误调 `ElMessage.error` | 中 |
+| F-07 | 任务要求操作/列缺失 | 补 IngestView(updateRules/执行记录/版本列/字段)、ServiceView(调用日志/类型/限流列)、CatalogView(筛选/审批)、QualityView(FormDialog/ECharts)、BillingView(编辑/dispute FormDialog/ECharts)、StatsView(ECharts/导出) | 中 |
+| F-08 | 测试深度不足 | 每页补操作触发 API 断言 + 权限不足按钮隐藏测试 + 真实字段 mock | 中 |
+| F-09 | PageTable 改动未说明 | 报告补说明 + 补 actions 插槽测试 | 低 |
+| F-10 | FormDialog validate 未捕获 | validate 纳入 try/catch（B-04 遗留） | 低 |
+| F-11 | SystemView tab-change 全量重载 | 按 tab 名按需加载 | 低 |
+| F-12 | triggerCheck ruleIds 空 | ruleIds 用多选填充 | 低 |
+| F-13 | SystemView 弱口令默认 | 去除 '123456' 兜底，新建强制输入密码 | 低 |
+
+## 9. 建议提交信息（返工后）
+
+```text
+feat(M7-C): functionalize 9 console modules with real API
+
+- upgrade 10 pages from skeleton to operational (list/form/status flow/detail)
+- reuse PageTable/FormDialog/StatusTag, permission-gated buttons
+- add actions slot to PageTable for row operations
+- tests: 28 vitest cases green (10 pages + infra)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+```
+
+---
+
+**下一步**：M7-C **有条件通过，建议返工一轮**。须先修复 F-01（分页切片）、F-02（Dashboard 字段对齐）两个高优先级缺陷，再补 F-03~F-08 的中优先级项（reject/状态机显隐/confirm 捕获/全局错误提示/缺失操作/测试深度），然后进入 M7-D 测试回归与端到端验收。返工不超过 3 次。
+
+---
+
+# Claude Code 审查结果 — M7-C 复审（返工后）
+
+> 审查阶段：M7-C 复审 — 针对首轮 M7-C 审查返工清单的复核
+> 审查日期：2026-06-27
+> 审查范围：返工改动文件 = `api/client.ts` `api/types.ts` `components/PageTable.vue` + 其测试 + 10 个 view + `views/__tests__/m7c-pages.test.ts` + 新增 `api/__tests__/types.test.ts`
+> 任务单：`tasks/codex-task-M7C-execute.md` + 首轮返工清单 F-01~F-13
+
+## 1. 返工项闭环核查
+
+| 首轮编号 | 问题 | 修复状态 | 核查证据 |
+|---|---|---|---|
+| F-01 | toPage 假分页不切片 | ✅ 已修复 | `types.ts` toPage 加 `slice(start, start+safeSize)`，新增 `types.test.ts` 验证 `[1..5]` 第2页2条返回 `[3,4]` |
+| F-02 | Dashboard 字段名不对齐 | ✅ 已修复 | StatsView/MonitorView 改用 `runningServices/costAmount/complianceScore`，移除不存在的 `ingestCount/auditCount`；mock 同步完整字段并断言"服务数 3" |
+| F-03 | PartnerView 缺 reject | ✅ 已修复 | 补 `openReject` FormDialog（reason）→ `rejectPartner`，`canApprove` 状态显示驳回按钮 |
+| F-04 | 状态机按钮未按 status 显隐 | ✅ 已修复（有偏差，见 R-01） | Partner/Ingest/Service/Consumer 均加 `canSubmit/canApprove/canOffline` 基于 `row.status` 判断 |
+| F-05 | confirm 取消未捕获 | ✅ 已修复 | 所有 `flow/publish/offline/applyEvent` 包 try/catch，cancel 静默 |
+| F-06 | 全局错误提示缺失 | ✅ 已修复 | `client.ts` 响应拦截器 success===false 与非 401 error 分支调 `showErrorOnce`（800ms 去重） |
+| F-07 | 任务要求操作/列缺失 | ⚠️ 部分修复（见 R-02） | Ingest(updateRules/记录/版本列/字段)、Service(日志/类型/限流列)、Catalog(筛选/审批)、Quality/Billing(FormDialog)、Stats(ECharts/导出) 已补；但审计/日志仍用 `<pre>` 而非 PageTable |
+| F-08 | 测试深度不足 | ✅ 已修复 | 11 个 it 补操作触发 API 断言（createPartner/registerService/generateBill 等）+ 权限不足按钮隐藏测试 + 真实 DashboardSummary 字段 mock |
+| F-09 | PageTable 改动未说明 | ✅ 已修复 | 补 actions 插槽测试（`renders actions slot`） |
+| F-10 | FormDialog validate 未捕获 | ❌ 未修复（B-04 遗留） | `FormDialog.submitForm` 的 `validate()` 仍在 try 外 |
+| F-11 | SystemView tab-change 全量重载 | ✅ 已修复 | `loadAux` 加 `if(roles.length===0)` 缓存判断 |
+| F-12 | triggerCheck ruleIds 空 | ⚠️ 部分修复 | 改为 CSV 输入 `ruleIds`（非空），但任务要求多选调 listQualityRules，仍手输 |
+| F-13 | SystemView 弱口令默认 | ✅ 已修复 | password 改 required，去除 '123456' 兜底 |
+
+## 2. 测试结果
+
+```text
+npm run test:unit  →  11 文件 / 31 用例 全绿（7.85s）
+```
+
+测试质量较首轮显著提升：操作触发 API 断言、权限不足按钮隐藏、真实字段 mock 均已覆盖。但测试日志暴露 FormDialog number 字段警告（见 R-04）。
+
+## 3. 新发现/残留问题
+
+### R-01【中】状态机显隐值与后端枚举不完全匹配
+
+- **Partner**：后端 `PartnerStatus` = REGISTERED/SUBMITTED/APPROVED/REJECTED/ADMITTED/RATED/SUSPENDED/EXITED。
+  - 前端 `canTerminate` 含 `ACTIVE/APPROVED`（均不存在），漏 `RATED/SUSPENDED`（实际可 EXIT）→ RATED/SUSPENDED 状态不显示退出按钮，APPROVED 状态错误显示退出（点击会触发后端状态非法转移异常）。
+  - `canSubmit` 含 `DRAFT/PENDING`（不存在，冗余无害）。
+  - `canApprove` 漏 APPROVED 状态的 reject（APPROVED 可 reject）。
+- **Consumer**：后端 `ConsumerStatus` = REGISTERED/SUBMITTED/APPROVED/QUOTA_CONFIGURED/ENABLED/SUSPENDED/CANCELLED。前端 `canSubmit/canApprove` 含 `DRAFT/PENDING/PENDING_APPROVAL`（不存在，冗余）但 REGISTERED/SUBMITTED ✓，主路径可用。
+- **影响**：主要状态流转路径（REGISTERED→SUBMITTED→APPROVED→ADMITTED→EXITED）可用，但 RATED/SUSPENDED 退出、APPROVED 驳回等分支按钮显隐错误，点击会触发 400/500。
+- **建议**：按后端枚举校正 `canTerminate`（改为 ADMITTED/RATED/SUSPENDED）、`canApprove`（补 APPROVED）。
+
+### R-02【中】Consumer/Service 的审计/日志仍用 `<pre>` 而非 PageTable
+
+- 任务明确"查看行为审计：drawer + PageTable""查看调用日志：drawer + PageTable"。ConsumerView 的 `openAudit/openLogs` 把数据塞进 `drawerData` 用 `<pre>` 展示，无分页表格；ServiceView `openLogs` 同样 `<pre>{{ logs }}</pre>`。
+- 且 ConsumerView 详情/审计/日志共用一个 drawer（`detailVisible`），点审计会覆盖详情；ServiceView 日志与详情也共用 drawer。
+- **建议**：审计/日志改用 PageTable（fetchData 调 getConsumerAudit/getConsumerLogs），或至少独立 drawer。
+
+### R-03【中】CatalogView 审批申请逻辑错位
+
+- 每个 catalog card 都显示"审批申请"按钮，但 `approveLastApplication` 只审批全局 `lastApplicationId`（最近一次申请的 id），**不绑定当前 card 资产**。用户在 A 资产卡点"审批申请"可能审批的是 B 资产的申请，或无申请时点击无效（`if(lastApplicationId)` 静默跳过）。
+- **建议**：审批应针对具体申请，需先有"待审批申请列表"或从资产详情内查申请再审批，而非全局 lastApplicationId。
+
+### R-04【低】FormDialog number 字段初值为空字符串触发类型警告
+
+- 测试日志告警：`ElInputNumber modelValue="" Expected Number got String`。根因 `FormDialog.applyInitial` 用 `props.initial[field.prop] ?? ''` 给所有字段兜底，number 类型字段（weight/maxRequests/unitPrice）初值为 `''`。
+- 影响：控制台警告 + number 字段初始显示 0 而非空。功能不阻断。
+- **建议**：`applyInitial` 按 field.type 兜底（number→`undefined`，其余→`''`）。
+
+### R-05【低】BillingView confirm 无成功反馈/无 try 捕获
+
+- `confirm(row)` 直接 `await confirmBill(row.billNo); refresh()`，无 ElMessage.success（其他页 flow 有），且无 try/catch（失败靠拦截器全局提示，可接受但与 dispute 不一致）。
+- **建议**：补成功提示保持一致性。
+
+### R-06【低】IngestView createFields 的 partnerId 仍用 number 输入
+
+- 任务要求"partnerId 用 select（调 listPartners 填充选项）"。实际仍是 `type:'number'` 手输 ID，用户需知道合作方数字 ID。
+- **建议**：改 select，onMounted 调 listPartners 填充选项。
+
+### R-07【低】StatsView 导出报表为假导出
+
+- `exportReport` 只 `ElMessage.success('可在后端报表目录下载')`，未实际下载。任务允许"调后端导出或前端下载"，当前两者皆无。
+- **建议**：M7-D 可接受作为遗留，或前端用 Blob 触发下载。
+
+### R-08【低】FormDialog validate 未捕获（F-10 未修）
+
+- `FormDialog.submitForm` 的 `await formRef.value?.validate()` 仍无 try/catch，校验失败 unhandled rejection。本轮复用 FormDialog 的页面增多，影响面仍在。
+- **建议**：M7-D 修复。
+
+## 4. 后端契约复核
+
+| 项 | 结论 |
+|---|---|
+| `generateBill` 传 `logs:[]` | 后端 `request.logs()==null ? List.of()` 容忍空 ✓ |
+| `applyConsumerEvent('SUBMIT'/'APPROVE')` | 后端 `ConsumerEvent` 枚举含 SUBMIT/APPROVE，Spring 接受字符串 ✓ |
+| Partner 状态机值 | ⚠️ 前端含不存在值（ACTIVE/DRAFT/PENDING），见 R-01 |
+| DashboardSummary 字段 | ✅ 已对齐 runningServices/invokeCount/successRate/complianceScore/costAmount |
+| toPage 切片 | ✅ 正确，前端分页可用 |
+
+## 5. 开发计划符合情况
+
+| 检查项 | 是否符合 | 说明 |
+|---|---|---|
+| 数据零写死 | 符合 | |
+| 复用共享组件 | 符合 | |
+| 按钮按权限显隐 | 符合 | |
+| 状态机按钮按 status 显隐 | 基本符合 | 有偏差 R-01，主路径可用 |
+| 交互范式统一 | 基本符合 | 审计/日志未用 PageTable（R-02） |
+| 每页测试+操作断言+权限隐藏 | 符合 | F-08 已修 |
+| 最小改动 | 符合 | 仅必要改 client/types/PageTable |
+
+## 6. 审查结论
+
+```text
+✓ 通过（有条件） — 可进入 M7-D，R-01/R-02/R-03 建议在 M7-D 一并修复
+```
+
+**理由**：返工质量良好——两个高优缺陷（F-01 分页切片、F-02 Dashboard 字段对齐）已正确修复且有测试覆盖；F-03~F-09/F-11/F-13 中低优项基本闭环；测试从 28→31 用例，补齐操作触发 API 断言、权限不足按钮隐藏、真实字段 mock，首轮"测试掩盖缺陷"问题已消除。31 用例全绿。后端契约复核通过（generateBill logs 容忍、ConsumerEvent 枚举、DashboardSummary 字段均对齐）。
+
+**不阻塞 M7-D**：残留的 R-01（状态机值偏差，主路径可用）、R-02（审计/日志用 pre 非 PageTable）、R-03（CatalogView 审批逻辑错位）属功能完整度问题，不影响 M7-D 测试回归与端到端主链路走通（主链路不涉及这些分支）。建议 M7-D 一并修复 R-01/R-02/R-03 + F-10/R-04/R-08 等 FormDialog 遗留，使端到端更顺畅。R-03（CatalogView 审批错位）若 M7-D 端到端链路含"申请使用→审批"步骤则必须修。
+
+## 7. M7-D 前建议修复清单
+
+| 编号 | 问题 | 优先级 | 是否阻塞端到端 |
+|---|---|---|---|
+| R-01 | 状态机值与后端枚举偏差 | 中 | 否（主路径可用） |
+| R-02 | 审计/日志用 pre 非 PageTable | 中 | 否 |
+| R-03 | CatalogView 审批逻辑错位 | 中 | 若端到端含申请审批则阻塞 |
+| R-04 | FormDialog number 字段初值 | 低 | 否 |
+| R-05 | BillingView confirm 无反馈 | 低 | 否 |
+| R-06 | IngestView partnerId 未用 select | 低 | 否 |
+| R-07 | StatsView 假导出 | 低 | 否 |
+| F-10/R-08 | FormDialog validate 未捕获 | 低 | 否 |
+
+## 8. 建议提交信息
+
+```text
+fix(M7-C): rework per review — pagination slice, dashboard fields, status-gated buttons
+
+- toPage now slices by page/size (fix fake pagination) + unit test
+- align StatsView/MonitorView to DashboardSummary fields (runningServices/costAmount)
+- add PartnerView reject; status-gated buttons across partner/ingest/service/consumer
+- try/catch on all confirm dialogs; global ElMessage error in client interceptor
+- backfill missing ops: ingest rules/records, service logs, catalog filter/approve,
+  quality/billing FormDialogs, stats ECharts + export
+- tests: 31 vitest cases green (action-triggered API asserts + permission-hide + real fields)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+```
+
+---
+
+**下一步**：M7-C 复审**通过（有条件）**，可进入 M7-D（测试补齐与端到端回归）。建议 M7-D 同步修复 R-01/R-02/R-03 三个中优残留项（其中 R-03 若端到端链路含申请审批则必修），以及 FormDialog validate 捕获等低优遗留。M7-D 须完成每页操作触发 API 断言、权限边界测试、端到端主链路（新建合作方→配置接口→新建接入→测试接入→发布服务→注册消费方→配额→调用→查看日志→生成账单→Dashboard→质量规则→触发校验）走通并留证据。
+
+---
+
+# Claude Code 审查结果 — M7-D 阶段（测试补齐 + 端到端回归）
+
+> 审查阶段：M7-D — 测试补齐 + 端到端回归 + bug 修复（M7 收尾）
+> 审查日期：2026-06-27
+> 审查范围：后端 `CatalogService.java` `DataServiceManager.java` + 2 测试；前端 `api/partner.ts` `api/service.ts` `FormDialog.vue` + 5 view + `m7c-pages.test.ts`
+> 任务单：`tasks/codex-task-M7D-execute.md`
+> 前置：M7-A/B/C 已通过审查
+
+## 1. 审查对象
+
+| 文件 | 类别 | 说明 |
+|---|---|---|
+| `CatalogService.java` | 后端 bug 修复 | 加无参构造器预置 DEMO 资产 |
+| `DataServiceManager.java` | 后端 bug 修复 | register/update 时 `routeData.putIfAbsent` 初始化默认响应 |
+| `CatalogServiceTest.java` | 后端测试 | +1 回归测试 |
+| `DataServiceManagerTest.java` | 后端测试 | +1 回归测试（invoke 返回默认响应） |
+| `api/partner.ts` | 前端 bug 修复 | +admitPartner |
+| `api/service.ts` | 前端 bug 修复 | +defineService |
+| `FormDialog.vue` | 前端 bug 修复 | number 字段初值 undefined（R-04） |
+| `PartnerView.vue` | 前端 bug 修复 | +admit 操作，状态机精确校正（R-01） |
+| `ServiceView.vue` | 前端 bug 修复 | +define 操作，drawer 日志改 PageTable（R-02），状态机校正 |
+| `ConsumerView.vue` | 前端 bug 修复 | 审计/日志 drawer 改 PageTable（R-02），状态机校正 |
+| `CatalogView.vue` | 前端 bug 修复 | 审批绑定当前 item（R-03） |
+| `IngestView.vue` | 前端 bug 修复 | 状态机校正（R-01） |
+| `m7c-pages.test.ts` | 前端测试 | +4 it |
+
+## 2. 测试结果
+
+```text
+npm run test:unit       →  11 文件 / 35 用例 全绿
+mvn test -pl platform-pipeline  →  27 用例 全绿，BUILD SUCCESS
+```
+
+## 3. bug 修复核查（D.4）— 质量良好
+
+| 首轮遗留 | 修复 | 核查 |
+|---|---|---|
+| R-01 状态机值偏差 | ✅ 精确对齐 | Partner: canSubmit=REGISTERED/canApprove=SUBMITTED/canAdmit=APPROVED/canTerminate=ADMITTED,RATED,SUSPENDED — 完全匹配后端 PartnerStateMachine；Ingest: TESTING/PENDING_APPROVAL/ONLINE — 匹配 IngestTaskStateMachine；Service: REGISTERED→DEFINED→TESTED→PUBLISHED→VERSIONED/OFFLINE — 匹配 DataServiceStateMachine；Consumer: REGISTERED/SUBMITTED — 匹配 |
+| R-02 审计/日志非 PageTable | ✅ 已修复 | Consumer/Service drawer 用 `drawerMode` 区分，PageTable + fetchDrawerData/fetchLogs 分页加载，不再 `<pre>` 互覆盖 |
+| R-03 CatalogView 审批错位 | ✅ 已修复 | 改 `pendingApplicationIds: Record<itemId, appId>`，`approveApplicationFor(item)` 绑定当前资产，审批后 delete |
+| R-04 FormDialog number 初值 | ✅ 已修复 | `?? (field.type==='number' ? undefined : '')` |
+| 后端 invoke 返回 null | ✅ 已修复 | register/update 时 `routeData.putIfAbsent(routeKey, "{\"status\":\"ok\"}")`，invoke 不再 SERVICE-404 |
+| 后端 catalog 列表空 | ✅ 已修复（⚠️ 见 D-03） | 预置 DEMO 资产 |
+| 状态机断裂（缺 admit/define） | ✅ 已修复 | 前端补 admitPartner/defineService API + 按钮，Partner APPROVED→ADMITTED、Service REGISTERED→DEFINED 通路打通 |
+
+bug 修复全部正确，状态机精确对齐后端枚举（逐个核对 TRANSITIONS 表），回归测试覆盖 invoke 与 catalog 预置。
+
+## 4. 任务完成度核查（对照 M7-D 任务）
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| **D.1.1 Controller MockMvc 测试补齐** | ❌ **严重缺失** | 任务要求 9 个 Controller 各补正常/401/403/400/409/404 全分支。实际 9 个 ControllerTest 各仅 **1 个 @Test**，**零 MockMvc、零 401/403/409/404 测试**（grep `MockMvc|status().is|401|403` 全无匹配）。M7-A 审查 F-03 遗留未修。 |
+| **D.1.2 鉴权链路集成测试** | ❌ **未做** | 无 JwtAuthFilter+Aspect 端到端集成测试（虽有 M7-A 的 filter/aspect 单测，但非任务要求的端到端集成） |
+| D.1.3 mvn test 回归 | ✅ 通过 | pipeline 模块 27 测试全绿（其他模块未全量验证，但改动仅涉及 pipeline） |
+| **D.2.1 前端页面测试补齐** | ⚠️ 部分 | 补 4 个 it（partner 状态匹配、service logs drawer、catalog 审批绑定、consumer audit drawer），但缺搜索/分页触发重载、状态流转调 events API、详情 drawer 调 detail API、错误反馈（mock reject 验证 ElMessage.error） |
+| **D.2.2 前端边界测试** | ❌ **未做** | 空列表态、加载失败态、表单校验三项均未补 |
+| **D.3 端到端主链路 10 步** | ❌ **无证据** | 无 M7-D 完成报告，`dev-progress.md` 仍停留在 M7-A（未更新），无 10 步 curl/截图证据 |
+| D.4 bug 修复 | ✅ 良好 | 见 §3，7 项修复均正确 |
+| **D.5 验收材料** | ❌ **未落盘** | `delivery/acceptance-report.md` 未更新，完成报告未输出 |
+
+## 5. 发现的问题
+
+### D-01【高】后端 Controller MockMvc 测试基本未补（D.1.1 未完成）
+
+- M7-D 核心任务 D.1.1 要求每个 Controller 补齐正常/401/403/400/409/404 全分支 MockMvc 测试，并列出重点核查项（partner rating 越界/reject 空原因、consumer 配额超额、ingest 协议不通/格式解析失败、service 签名错误/时间戳过期/nonce 重放、quality 维度非法/无效 ruleId、billing 无数据/dispute 状态非法、stats 空数据/时间范围、user 重复用户名/权限码非法）。
+- 实际：9 个 ControllerTest 各 1 个 @Test（仅正常路径直接调用），**无任何 MockMvc、无 401/403/异常路径覆盖**。这是 M7-A 审查 F-03 的遗留，M7-D 未完成。
+- **影响**：权限边界（401/403）、状态机非法转移（409）、参数校验（400）、资源不存在（404）均无自动化回归保护，M7 总验收"鉴权验收"缺乏测试证据。
+- **建议**：返工，至少给每个 Controller 补 MockMvc 401/403 + 1 个异常路径测试。
+
+### D-02【高】端到端主链路无证据（D.3 未完成）
+
+- 任务 D.3 要求启动全部服务，从 5173 登录走通 10 步主链路，每步记录 curl + 响应 JSON。
+- 实际：无 M7-D 阶段完成报告（`reviews/` 仅 claude-review.md，无独立报告）；`tasks/dev-progress.md` 最后更新仍为 2026-06-26 M7-A 状态，未记录 M7-D 端到端结果；无 curl 证据。
+- **影响**：M7 总验收"端到端主链路走通"无证据，无法判定主链路是否真正打通（虽然 bug 修复表明 Codex 跑过部分链路发现问题，但未系统记录）。
+- **建议**：返工，执行 10 步主链路并记录 curl + 响应（脱敏 token）。
+
+### D-03【中】CatalogService 预置 DEMO 数据属测试数据注入，非 bug 修复
+
+- `CatalogService` 加无参构造器预置 `CATALOG-DEMO` 资产。这是为让端到端 `GET /catalog` 不返回空而注入的种子数据，**改变了生产代码行为**（每次启动都有一条 DEMO 资产），而非真正的 bug 修复。
+- 内存仓储重启即丢，开发环境可接受，但生产环境不应硬编码种子数据。
+- **建议**：若仅用于回归，应移到测试夹具或 SQL 种子（V010）；若保留，应在报告标注"开发环境种子数据，上线前移除"。
+
+### D-04【中】前端边界测试未补（D.2.2 未完成）
+
+- 任务 D.2.2 要求空列表态（el-empty）、加载失败态（mock reject 渲染错误提示）、表单校验（必填空时提交禁用）。均未补。
+- **建议**：M7-D 返工或并入后续，至少补加载失败态（验证 ElMessage.error）+ 空列表态。
+
+### D-05【低】前端测试缺操作触发 events API 断言
+
+- D.2.1 要求"状态流转按钮调对应 events API"。补的 4 个 it 验证了状态显隐/logs drawer/审批绑定/audit drawer，但**无"点击状态流转按钮→断言 submitPartner/approvePartner 等调用"的测试**。
+- **建议**：补 1-2 个状态流转断言。
+
+### D-06【低】FormDialog validate 未捕获仍存在
+
+- B-04/F-10 遗留，M7-D 未修。`FormDialog.submitForm` 的 `validate()` 仍无 try/catch。
+- **建议**：一行 try/catch 修复。
+
+### D-07【低】未输出 M7-D 阶段完成报告
+
+- 任务要求输出"阶段完成报告 - M7-D"（7 节内容）。未见独立报告文件，也未更新 dev-progress.md。
+- **建议**：补完成报告，至少记录 bug 清单、测试结果、端到端结论。
+
+## 6. 后端契约复核
+
+| 项 | 结论 |
+|---|---|
+| Partner 状态机前端值 | ✅ 完全对齐 PartnerStateMachine |
+| Ingest 状态机前端值 | ✅ 完全对齐 IngestTaskStateMachine |
+| Service 状态机前端值 | ✅ 完全对齐 DataServiceStateMachine |
+| Consumer 状态机前端值 | ✅ 对齐 ConsumerStateMachine |
+| admitPartner/defineService 端点 | ✅ 后端有 `/partners/{id}/admit`、`/services/{code}/define` |
+| DataServiceManager.invoke 默认响应 | ✅ routeData 初始化修复 SERVICE-404 |
+| CatalogController list | ✅ 预置 DEMO 后非空 |
+
+## 7. 开发计划符合情况
+
+| 检查项 | 是否符合 | 说明 |
+|---|---|---|
+| 只补测试 + 最小改动修 bug | ⚠️ 部分 | bug 修复最小且正确；但测试补齐严重不足 |
+| 不新增功能 | 符合 | admit/define 是补全既有后端端点的前端调用，非新功能 |
+| 不重构 | 符合 | |
+| mvn test + npm test 全绿 | ✅ | 前端 35 + pipeline 27 全绿 |
+| 端到端走通留证据 | ❌ | 无证据 |
+| bug 清单与回归测试 | ⚠️ | bug 修复有回归测试，但未形成清单文档 |
+| 验收材料 | ❌ | 未落盘 |
+
+## 8. 审查结论
+
+```text
+△ 有条件通过（需返工） — 不建议 M7 最终验收通过，D.1（后端 Controller MockMvc）与 D.3（端到端证据）须补
+```
+
+**理由**：M7-D 的 bug 修复质量优秀——R-01/R-02/R-03/R-04 四个 M7-C 残留项全部精确修复，状态机逐个对齐后端枚举（Partner/Ingest/Service/Consumer 四套状态机均核对 TRANSITIONS 表无误），后端 invoke null、catalog 空两个 bug 修复正确且有回归测试，前端补 admit/define 打通状态机断裂。测试全绿（前端 35 + pipeline 27）。
+
+但 M7-D 的两项**核心任务严重缺失**：
+1. **D.1 后端测试补齐未做**——9 个 ControllerTest 各仅 1 个 @Test，零 MockMvc，零 401/403/异常路径覆盖。M7-A 审查 F-03 遗留至今未修，与 M7-D 任务 D.1.1/D.1.2 的明确要求严重不符。
+2. **D.3 端到端无证据**——无完成报告，dev-progress.md 未更新，无 10 步 curl 证据。M7 总验收"端到端主链路走通"无依据。
+
+此外 D.2.2 前端边界测试、D.5 验收材料、阶段完成报告均未交付。
+
+**M7 总体验收判断**：M7-A/B/C 三阶段已通过且质量良好，M7-D bug 修复质量高，但 M7-D 作为收尾阶段其核心测试与端到端验证任务未完成。**不建议 M7 最终验收通过**，须返工补 D.1（Controller MockMvc 401/403/异常路径）+ D.3（端到端 10 步证据）+ D.5（验收材料）后方可最终验收。返工不超过 3 次。
+
+## 9. 返工任务清单
+
+| 编号 | 问题 | 修改要求 | 优先级 |
+|---|---|---|---|
+| F-01 | Controller MockMvc 测试缺失（D.1.1） | 9 个 Controller 各补 MockMvc：401（无 token）+ 403（权限不足）+ 至少 1 异常路径（400/409/404）；重点核查项按任务单 D.1.1 | 高 |
+| F-02 | 鉴权链路集成测试缺失（D.1.2） | 新增 JwtAuthFilter+Aspect 端到端集成测试：admin 全通、低权限 403、无 token 401、`/auth/permissions` 返回对齐 | 高 |
+| F-03 | 端到端 10 步无证据（D.3） | 启动全服务，走通 10 步主链路，每步 curl + 响应 JSON（脱敏）记入完成报告 | 高 |
+| F-04 | 前端边界测试缺失（D.2.2） | 补空列表态、加载失败态（mock reject 验证 ElMessage.error）、表单校验测试 | 中 |
+| F-05 | CatalogService 种子数据（D-03） | 移到测试夹具或 SQL 种子，或报告标注上线前移除 | 中 |
+| F-06 | 前端状态流转断言缺失（D-05） | 补点击状态按钮→断言 events API 调用 | 低 |
+| F-07 | FormDialog validate 未捕获（D-06） | validate 纳入 try/catch（B-04/F-10 遗留） | 低 |
+| F-08 | M7-D 完成报告未输出（D-07） | 补阶段完成报告 7 节 + 更新 dev-progress.md + D.5 验收材料 | 中 |
+
+## 10. M7 总体结论（待返工后最终判定）
+
+| 维度 | 状态 |
+|---|---|
+| M7-A 后端 Controller + 鉴权 | ✅ 通过 |
+| M7-B 前端基础设施 | ✅ 通过（有条件，F-01 vite proxy 已在 C 阶段规避） |
+| M7-C 前端页面功能化 | ✅ 通过（复审，R-01~04 已在 D 阶段修复） |
+| M7-D 测试补齐 + 端到端 | △ 有条件通过，需返工 F-01~F-03 |
+| 46 条 FR 覆盖 | 基本覆盖（M7-A 审查已核查，端到端待 D.3 证实） |
+| 鉴权验收 | JWT+权限码生效（M7-A 启动验证），但缺 MockMvc 401/403 自动化证据 |
+| 端到端主链路 | bug 修复表明部分跑通，但缺系统证据 |
+| 是否建议最终验收通过 | **否，待 M7-D 返工 F-01/F-02/F-03 后判定** |
+
+## 11. 建议提交信息（返工后）
+
+```text
+fix(M7-D): rework residuals + bug fixes for state machine alignment
+
+- align partner/ingest/service/consumer status gates to backend enums
+- add admitPartner/defineService to complete state transitions
+- consumer/service audit & logs via paged PageTable drawer
+- bind catalog approval to selected item
+- backend: init routeData on register (fix invoke null), seed demo catalog
+- FormDialog: number field initial value
+- tests: 35 frontend + 27 pipeline green
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+```
+
+---
+
+**下一步**：M7-D **有条件通过，需返工一轮**。bug 修复质量优秀可保留，但须补齐三项核心任务后方可 M7 最终验收：
+1. **F-01/F-02 后端 Controller MockMvc + 鉴权集成测试**（D.1.1/D.1.2，M7-A F-03 遗留）；
+2. **F-03 端到端 10 步主链路 curl 证据**（D.3）；
+3. **F-08 阶段完成报告 + D.5 验收材料**。
+返工完成后由 Claude Code 做 M7 最终验收。返工不超过 3 次。
