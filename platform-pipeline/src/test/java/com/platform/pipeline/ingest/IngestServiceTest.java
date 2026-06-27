@@ -61,10 +61,10 @@ class IngestServiceTest {
             IngestController controller = new IngestController(service);
             String endpoint = "http://localhost:" + server.getAddress().getPort() + "/data";
 
-            IngestTask task = controller.create(new IngestController.CreateIngestTaskRequest(1L, endpoint)).data();
+            IngestTask task = controller.create(new IngestController.CreateIngestTaskRequest(1L, endpoint, null, null, null, null)).data();
             controller.run(task.id());
 
-            assertEquals(1, controller.records().data().size());
+            assertEquals(1, controller.records(null, 1, 10).data().records().size());
         } finally {
             server.stop(0);
         }

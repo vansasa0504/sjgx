@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: platform-quality
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:localhost:8848}
+  flyway:
+    enabled: ${FLYWAY_ENABLED:false}
+
+server:
+  port: ${SERVER_PORT:8084}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,info

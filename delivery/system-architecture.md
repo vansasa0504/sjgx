@@ -55,6 +55,29 @@ flowchart LR
 6. `platform-billing` 聚合调用日志生成账单、统计快照和监管报表。
 7. `AuditLogAspect` 记录操作审计到 `t_audit_log`。
 
+## 安全架构
+
+```mermaid
+sequenceDiagram
+  participant C as 消费方
+  participant G as platform-gateway
+  participant S as platform-pipeline
+  participant A as t_audit_log
+  C->>G: API Key + HMAC + timestamp + nonce
+  G->>S: 透传身份与请求
+  S->>S: 签名、防重放、配额、限流校验
+  S-->>C: 数据服务响应
+  S->>A: 追加写审计与调用日志
+```
+
+关键控制：
+
+- JWT 用于平台用户认证，API Key + HMAC 用于消费方服务调用。
+- `DbAdapter` 只允许单条只读 SELECT，拒绝写操作和多语句。
+- `XssFilter` 对请求参数和 Header 做 HTML 实体转义。
+- `AuditLogAspect` 对 password、secret、token、credential、apiKey、手机号、身份证做脱敏。
+- `t_audit_log` 与 `t_service_invoke_log` 支撑合规追溯和计费统计。
+
 ## 双活拓扑
 
 `k8s/dev/deployment-platform-a.yaml` 与 `deployment-platform-b.yaml` 表示同城双活两个机房实例，`service.yaml` 统一暴露入口。M6 演练脚本位于 `delivery/chaos-drill/`，真实 RPO/RTO 待上线环境执行。

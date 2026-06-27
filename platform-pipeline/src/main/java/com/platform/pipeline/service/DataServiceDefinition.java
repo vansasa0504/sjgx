@@ -5,8 +5,8 @@ import java.time.Instant;
 public class DataServiceDefinition {
     private final long id;
     private final String serviceCode;
-    private final String name;
-    private final String routeKey;
+    private String name;
+    private String routeKey;
     private DataServiceStatus status = DataServiceStatus.REGISTERED;
     private int version = 1;
     private final Instant createdAt = Instant.now();
@@ -27,4 +27,6 @@ public class DataServiceDefinition {
     public int version() { return version; }
     public void incrementVersion() { this.version++; }
     public Instant createdAt() { return createdAt; }
+    public void name(String name) { this.name = name; }
+    public void routeKey(String routeKey) { this.routeKey = routeKey; }
 }

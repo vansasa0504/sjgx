@@ -37,7 +37,7 @@ class PartnerServiceTest {
         PartnerService service = new PartnerService("test-key");
         PartnerController controller = new PartnerController(service);
 
-        Partner partner = controller.create(new PartnerController.CreatePartnerRequest("征信联合服务")).data();
+        Partner partner = controller.create(new PartnerController.CreatePartnerRequest("征信联合服务", null, null, null)).data();
         PartnerInterfaceConfig config = controller.configure(partner.id(),
                 new PartnerController.InterfaceRequest("HTTPS", "https://partner.example/api", "api-secret")).data();
 

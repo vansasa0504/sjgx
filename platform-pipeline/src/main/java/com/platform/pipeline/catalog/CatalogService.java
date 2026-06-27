@@ -26,4 +26,19 @@ public class CatalogService {
         if (scenario != null) stream = stream.filter(i -> scenario.equals(i.scenario()));
         return stream.toList();
     }
+
+    public List<DataCatalogItem> search(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.copyOf(items);
+        }
+        return items.stream()
+                .filter(i -> (i.name() != null && i.name().contains(keyword))
+                        || (i.catalogCode() != null && i.catalogCode().contains(keyword))
+                        || (i.subject() != null && i.subject().contains(keyword)))
+                .toList();
+    }
+
+    public DataCatalogItem findById(long id) {
+        return items.stream().filter(i -> i.id() == id).findFirst().orElse(null);
+    }
 }

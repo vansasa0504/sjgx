@@ -1,6 +1,8 @@
 package com.platform.pipeline.ingest;
 
 import java.net.URI;
+import java.util.List;
+import java.util.Map;
 
 public class IngestTask {
     private final long id;
@@ -8,6 +10,10 @@ public class IngestTask {
     private final URI endpoint;
     private final String protocol;
     private final String format;
+    private String syncMode;
+    private String cronExpression;
+    private Map<String, String> fieldMapping = Map.of();
+    private List<String> qualityRules = List.of();
     private IngestTaskStatus status = IngestTaskStatus.DRAFT;
 
     public IngestTask(long id, long partnerId, URI endpoint, String protocol, String format) {
@@ -36,6 +42,38 @@ public class IngestTask {
 
     public String format() {
         return format;
+    }
+
+    public String syncMode() {
+        return syncMode;
+    }
+
+    public void syncMode(String syncMode) {
+        this.syncMode = syncMode;
+    }
+
+    public String cronExpression() {
+        return cronExpression;
+    }
+
+    public void cronExpression(String cronExpression) {
+        this.cronExpression = cronExpression;
+    }
+
+    public Map<String, String> fieldMapping() {
+        return fieldMapping;
+    }
+
+    public void fieldMapping(Map<String, String> fieldMapping) {
+        this.fieldMapping = fieldMapping == null ? Map.of() : Map.copyOf(fieldMapping);
+    }
+
+    public List<String> qualityRules() {
+        return qualityRules;
+    }
+
+    public void qualityRules(List<String> qualityRules) {
+        this.qualityRules = qualityRules == null ? List.of() : List.copyOf(qualityRules);
     }
 
     public IngestTaskStatus status() {

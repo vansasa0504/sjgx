@@ -14,17 +14,25 @@ spring:
             allowed-headers: "*"
       routes:
         - id: platform-auth
-          uri: lb://platform-auth
+          uri: ${PLATFORM_AUTH_URI:http://localhost:8081}
           predicates:
             - Path=/auth/**,/users/**,/roles/**,/permissions/**
         - id: platform-partner
-          uri: lb://platform-partner
+          uri: ${PLATFORM_PARTNER_URI:http://localhost:8082}
           predicates:
-            - Path=/api/v1/partners/**
+            - Path=/api/v1/partners/**,/api/v1/consumers/**
         - id: platform-pipeline
-          uri: lb://platform-pipeline
+          uri: ${PLATFORM_PIPELINE_URI:http://localhost:8083}
           predicates:
             - Path=/api/v1/ingest/**,/api/v1/services/**,/api/v1/catalog/**
+        - id: platform-quality
+          uri: ${PLATFORM_QUALITY_URI:http://localhost:8084}
+          predicates:
+            - Path=/api/v1/quality/**
+        - id: platform-billing
+          uri: ${PLATFORM_BILLING_URI:http://localhost:8085}
+          predicates:
+            - Path=/api/v1/billing/**,/api/v1/stats/**
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -37,6 +45,15 @@ spring:
           max-wait: ${REDIS_POOL_MAX_WAIT_MS:2000}
   flyway:
     enabled: ${FLYWAY_ENABLED:false}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,info
 
 sentinel:
   rules:

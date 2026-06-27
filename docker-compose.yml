@@ -1,6 +1,6 @@
 services:
   mysql:
-    image: mysql:8.4
+    image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-sjgx}
@@ -21,6 +21,8 @@ services:
       MODE: standalone
     ports:
       - "8848:8848"
+      - "9848:9848"
+      - "9849:9849"
 
   xxl-job:
     image: xuxueli/xxl-job-admin:2.4.1

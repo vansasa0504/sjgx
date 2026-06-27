@@ -69,6 +69,24 @@ public class ConsumerService {
         return updated;
     }
 
+    public List<Consumer> list(String keyword, String businessLine, String status) {
+        return consumers.values().stream()
+                .filter(c -> keyword == null || keyword.isBlank()
+                        || (c.name() != null && c.name().contains(keyword))
+                        || (c.consumerCode() != null && c.consumerCode().contains(keyword)))
+                .filter(c -> businessLine == null || businessLine.isBlank() || businessLine.equals(c.businessLine()))
+                .filter(c -> status == null || status.isBlank() || status.equals(c.status().name()))
+                .toList();
+    }
+
+    public Consumer find(long id) {
+        Consumer consumer = consumers.get(id);
+        if (consumer == null) {
+            throw new BusinessException("CONSUMER-404", "consumer not found");
+        }
+        return consumer;
+    }
+
     public List<String> events() {
         return List.copyOf(events);
     }

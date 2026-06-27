@@ -5,4 +5,8 @@ import java.util.List;
 
 public interface BillingRuleRepository {
     List<BillingRule> activeRules(LocalDate billingDate);
+
+    BillingRule save(BillingRule rule);
+
+    List<BillingRule> findAll();
 }

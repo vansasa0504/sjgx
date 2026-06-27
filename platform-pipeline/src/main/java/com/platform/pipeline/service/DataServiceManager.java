@@ -1,11 +1,14 @@
 package com.platform.pipeline.service;
 
 import com.platform.common.exception.BusinessException;
+import com.platform.common.model.Page;
 import com.platform.common.model.ServiceInvokeLog;
 import com.platform.common.security.SignatureUtil;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -24,6 +27,43 @@ public class DataServiceManager {
         DataServiceDefinition definition = new DataServiceDefinition(ids.getAndIncrement(), serviceCode, name, routeKey);
         services.put(serviceCode, definition);
         return definition;
+    }
+
+    public List<DataServiceDefinition> list(String keyword, String status) {
+        return services.values().stream()
+                .filter(d -> keyword == null || keyword.isBlank()
+                        || (d.serviceCode() != null && d.serviceCode().contains(keyword))
+                        || (d.name() != null && d.name().contains(keyword)))
+                .filter(d -> status == null || status.isBlank() || status.equals(d.status().name()))
+                .toList();
+    }
+
+    public DataServiceDefinition detail(String serviceCode) {
+        return require(serviceCode);
+    }
+
+    public DataServiceDefinition update(String serviceCode, String name, String routeKey) {
+        DataServiceDefinition definition = require(serviceCode);
+        if (name != null) {
+            definition.name(name);
+        }
+        if (routeKey != null) {
+            definition.routeKey(routeKey);
+        }
+        return definition;
+    }
+
+    public Page<ServiceInvokeLog> logs(String serviceCode, String consumerId, String status, int page, int size) {
+        List<ServiceInvokeLog> filtered = logWriter.logs().stream()
+                .filter(l -> serviceCode == null || serviceCode.isBlank() || serviceCode.equals(l.serviceCode()))
+                .filter(l -> consumerId == null || consumerId.isBlank() || consumerId.equals(l.consumerCode()))
+                .filter(l -> status == null || status.isBlank() || status.equals(String.valueOf(l.status())))
+                .toList();
+        int safeSize = size <= 0 ? 10 : size;
+        int safePage = page <= 0 ? 1 : page;
+        int from = Math.min((safePage - 1) * safeSize, filtered.size());
+        int to = Math.min(from + safeSize, filtered.size());
+        return Page.of(new ArrayList<>(filtered.subList(from, to)), filtered.size(), safePage, safeSize);
     }
 
     public DataServiceDefinition apply(String serviceCode, DataServiceEvent event) {

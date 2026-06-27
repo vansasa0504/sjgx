@@ -25,6 +25,15 @@ spring:
           min-idle: ${REDIS_POOL_MIN_IDLE:4}
           max-wait: ${REDIS_POOL_MAX_WAIT_MS:2000}
 
+server:
+  port: ${SERVER_PORT:8085}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,info
+
 platform:
   db:
     type: ${DB_TYPE:MYSQL}

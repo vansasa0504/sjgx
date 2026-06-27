@@ -15,6 +15,15 @@ spring:
     locations: classpath:db/migration,filesystem:db/migration
     baseline-on-migrate: true
 
+server:
+  port: ${SERVER_PORT:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,info
+
 partner:
   credential-key: ${PARTNER_CREDENTIAL_KEY:change-me-in-env}
 

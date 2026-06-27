@@ -1,6 +1,10 @@
 package com.platform.auth;
 
+import com.platform.common.auth.AuthPrincipal;
 import com.platform.common.model.Result;
+import com.platform.common.security.PermissionCodes;
+import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -31,8 +35,21 @@ public class AuthController {
         return Result.ok(null);
     }
 
+    @GetMapping("/permissions")
+    public Result<List<String>> permissions(@RequestHeader("Authorization") String authorization) {
+        AuthPrincipal principal = authService.parse(bearer(authorization));
+        return Result.ok(List.copyOf(principal.permissions()));
+    }
+
+    @GetMapping("/all-permissions")
+    public Result<List<String>> allPermissions() {
+        return Result.ok(PermissionCodes.ALL);
+    }
+
     private String bearer(String authorization) {
-        return authorization.startsWith("Bearer ") ? authorization.substring("Bearer ".length()) : authorization;
+        return authorization != null && authorization.startsWith("Bearer ")
+                ? authorization.substring("Bearer ".length())
+                : authorization;
     }
 
     public record LoginRequest(String username, String password) {
