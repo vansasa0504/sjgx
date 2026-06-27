@@ -29,6 +29,7 @@ export function createClient(baseURL: string): AxiosInstance {
     (response) => {
       const payload = response.data as ApiResult<unknown>
       if (payload && typeof payload === 'object' && payload.success === false) {
+        showErrorOnce(payload.message || '请求失败')
         return Promise.reject(new Error(payload.message || '请求失败'))
       }
       return response

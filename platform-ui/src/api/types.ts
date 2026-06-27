@@ -12,14 +12,17 @@ export interface PageQuery {
 }
 
 export function toPage<T>(value: T[] | Page<T>, page = 1, size = 10): Page<T> {
+  const safePage = page > 0 ? page : 1
+  const safeSize = size > 0 ? size : 10
   if (Array.isArray(value)) {
-    return { records: value, total: value.length, current: page, size }
+    const start = (safePage - 1) * safeSize
+    return { records: value.slice(start, start + safeSize), total: value.length, current: safePage, size: safeSize }
   }
   return {
     records: value.records ?? [],
     total: value.total ?? 0,
-    current: value.current ?? page,
-    size: value.size ?? size
+    current: value.current ?? safePage,
+    size: value.size ?? safeSize
   }
 }
 

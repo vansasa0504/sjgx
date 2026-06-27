@@ -16,14 +16,20 @@
     </el-form>
 
     <el-table v-loading="loading" :data="records" border>
-      <el-table-column
-        v-for="column in columns"
-        :key="column.prop"
-        :prop="column.prop"
-        :label="column.label"
-        :width="column.width"
-        :formatter="column.formatter"
-      />
+      <template v-for="column in columns" :key="column.prop">
+        <el-table-column v-if="column.prop === 'actions'" :label="column.label" :width="column.width">
+          <template #default="{ row }">
+            <slot name="actions" :row="row" />
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-else
+          :prop="column.prop"
+          :label="column.label"
+          :width="column.width"
+          :formatter="column.formatter"
+        />
+      </template>
       <template #empty>
         <el-empty description="暂无数据" />
       </template>

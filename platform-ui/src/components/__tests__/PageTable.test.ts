@@ -29,4 +29,18 @@ describe('PageTable', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('暂无数据')
   })
+
+  it('renders actions slot', async () => {
+    const wrapper = mount(PageTable, {
+      props: {
+        columns: [{ prop: 'name', label: '名称' }, { prop: 'actions', label: '操作' }],
+        fetchData: vi.fn().mockResolvedValue({ records: [{ name: 'row1' }], total: 1 })
+      },
+      slots: { actions: '<button class="row-action">操作</button>' },
+      global: { plugins: [ElementPlus] }
+    })
+
+    await flushPromises()
+    expect(wrapper.find('.row-action').exists()).toBe(true)
+  })
 })
