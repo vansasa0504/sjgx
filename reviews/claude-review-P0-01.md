@@ -167,3 +167,92 @@ h2RunsMigrationsThroughV009 green.
 **审查结论**：需要返工（RW-1~RW-5 为必做项，RW-6~RW-8 为协调/建议项）。
 **是否需要 Codex 返工**：是。
 **是否建议提交**：暂不提交，待 RW-1~RW-5 完成并复验后再提交。
+
+---
+
+# 返工复审（2026-06-28）
+
+## A. 返工提交
+
+- Commit：`573a4666 Update migrations for V010 identity schema`
+- 工作区干净，返工已提交。
+
+## B. 返工项逐条核验
+
+| 返工项 | 状态 | 核验证据 |
+|---|---|---|
+| RW-1 V010 测试覆盖 | ✅ 完成 | `M5EndToEndIntegrationTest.h2RunsMigrationsThroughV010AndMatchesIdentitySchema` 断言 t_user.updated_at / t_role.created_at / 4 张新表 / uk 与 idx 索引 / VARCHAR(128) 列宽 |
+| RW-2 Flyway 引擎级证据 | ✅ 完成 | 测试改用真实 `Flyway.configure().migrate()` + `validate()`；实测日志：`Successfully applied 10 migrations ... now at version v010` + `Successfully validated 10 migrations` |
+| RW-3 旧库升级证据 | ✅ 完成 | 新增 `h2UpgradesOldV009BaselineThroughV010WithoutLosingIdentityRows`：先跑 V001~V009 模拟旧库、插入遗留 user/role 行、再执行 V010，断言升级成功且遗留数据不丢 |
+| RW-4 结构一致性断言 | ✅ 完成 | `assertColumn/assertIndex/assertTable/assertVarcharLength` 工具方法覆盖身份域 7 张表关键列与索引 |
+| RW-5 checksum 偏差处置 | ✅ 完成 | `tasks/dev-progress.md` §11.1 写明方式A（DROP 重建）/方式B（`flyway:repair`+`validate`）命令及 PowerShell 引号注意 |
+| RW-6 种子衔接 | ✅ 完成 | `dev-progress.md` §11.2 登记 P0-03 须以 `t_data_catalog`/`VARCHAR(128)`/`t_api_credential` 重新提供种子，并标注 `t_user.status` NOT NULL |
+| RW-7 行尾符漂移 | ✅ 完成 | 新增 `.gitattributes`：`db/migration/*.sql text eol=lf` |
+| RW-8 t_user.status 默认值 | ⚠️ 登记而非修复 | dev-progress §11.2 已将问题移交给 P0-03（应用层写入或迁移补默认值）。属跨任务协调，可接受 |
+
+## C. 测试复验
+
+| 测试命令 | 结果 | 说明 |
+|---|---|---|
+| `mvn -pl platform-billing -am test -Dtest=M5EndToEndIntegrationTest` | ✅ 4 tests, 0 fail, 0 error | Flyway 引擎真实迁移 V001~V010 + validate + 结构断言 + 旧库升级全部通过 |
+
+## D. 本次复审新发现问题
+
+### D-1 commit 范围过宽（中，需整改）
+
+`573a4666` 把 **53 个非 P0-01 文件**一并提交，远超 `db/migration/*` + 测试 + `.gitattributes` 的任务边界：
+
+- **`.agents/m7d-e2e-logs/*.log`（30 个文件）**：M7-D 的 e2e 运行日志，属临时产物，**不应入库**。`.gitignore` 未包含 `.agents/`，导致 `git add .` 误收。
+- **docx 附件**（`附件三 1.外部数据采集平台软件招投标需求说明书.docx`）：二进制需求文档入库存放于仓库根目录、文件名含空格与中文，不规范。建议移至 `docs/` 并考虑是否纳入版本控制。
+- **docs/* 5 个、tasks/codex-task-P0-0[2-9,10] 与 M7-* 等**：文档与任务单本身有价值，但与 "Update migrations for V010 identity schema" 的 commit 主题不符，应拆分提交。
+
+这违反 AGENTS.md §7 最小改动原则与"不进行无关改动"精神。虽未触及敏感文件、未删大量文件，但污染了 commit 历史。
+
+### D-2 Flyway 命名告警（低，提示）
+
+测试日志：`10 SQL migrations were detected but not run because they did not follow the filename convention`——Flyway 把 `U0xx` 回滚脚本也扫进了 location（`filesystem:../db/migration`），因不符合 `V` 命名被跳过。功能无影响（U 脚本本就不应被 Flyway 执行），但建议将 `U0xx` 移出 `db/migration/`（如 `db/rollback/`，仓库已有该目录）或用 `.gitignore`/Flyway `sqlMigrationPrefix` 隔离，保持 location 干净。
+
+## E. 返工复审结论
+
+### 通过（附整改项）
+
+P0-01 的核心目标全部达成且经实测验证：
+- 空库 Flyway 迁移 V001~V010 成功 + validate 无偏差（H2 引擎实测）；
+- V010 结构与 `database-design.md` 一致（断言覆盖）；
+- 旧库（V009 基线）可升级且不丢数据；
+- U001~U010 对等回滚（上轮已 MySQL 实测）；
+- checksum 处置与种子衔接已文档化；
+- `.gitattributes` 防 LF/CRLF 漂移。
+
+返工质量高，RW-1~RW-7 全部落地，RW-8 合理移交 P0-03。
+
+**遗留整改（非阻断，建议在合入主分支前处理）**：
+1. 将 `.agents/` 加入 `.gitignore`，并从版本控制移除 30 个 e2e 日志（`git rm -r --cached .agents/`）。
+2. docx 附件规范放置或移出版本控制。
+3. 后续提交按主题拆分，避免 `git add .` 一揽子提交无关文件。
+4. （建议）将 `U0xx` 移出 `db/migration/` 以消除 Flyway 命名告警。
+
+**是否需要 Codex 返工**：核心任务无需返工；D-1 整改建议由 Claude Code 协调处理（gitignore + `git rm --cached`）。
+**是否建议提交主分支**：建议先完成 D-1 整改（清理 `.agents/` 日志、补 `.gitignore`）再合入主分支；若主分支策略允许，可先合入迁移修复、后续提交清理。
+
+## F. 建议提交信息（迁移修复部分）
+
+```text
+fix(P0-01): harden Flyway migrations for MySQL 8.0 compatibility
+
+- drop CREATE TABLE IF NOT EXISTS / AUTO_INCREMENT / ON UPDATE CURRENT_TIMESTAMP
+  from V001-V008 for strict Flyway semantics and cross-dialect portability
+- rework V010 from IF-NOT-EXISTS rebuild to ALTER-based evolution; align
+  identity/credential tables with database-design.md (permission_code VARCHAR(128),
+  app-layer validation instead of FKs)
+- add U001-U010 symmetric rollback scripts (verified on MySQL 8.0)
+- remove broken U010 seed data (wrong table name t_data_catalog_item); seed
+  reinstatement tracked under P0-03 (dev-progress §11.2)
+- cover V010 via Flyway-engine migration test on H2: migrate+validate green,
+  schema assertions, old V009-baseline upgrade preserves identity rows
+- add .gitattributes (db/migration/*.sql eol=lf) to prevent checksum drift
+- document flyway repair/validate for existing dev DBs (dev-progress §11.1)
+
+Verified: Flyway applies V001-V010 clean and validates on H2; U010 rollback
+symmetric on MySQL 8.0; M5EndToEndIntegrationTest 4/4 green.
+```
