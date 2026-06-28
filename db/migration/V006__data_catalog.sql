@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS t_data_catalog (
+CREATE TABLE t_data_catalog (
     id BIGINT PRIMARY KEY,
     catalog_code VARCHAR(64) NOT NULL UNIQUE,
     name VARCHAR(128) NOT NULL,

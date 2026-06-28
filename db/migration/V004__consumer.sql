@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS t_consumer (
+CREATE TABLE t_consumer (
     id BIGINT PRIMARY KEY,
     consumer_code VARCHAR(64) NOT NULL UNIQUE,
     name VARCHAR(128) NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS t_consumer (
     updated_at TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS t_consumer_quota (
+CREATE TABLE t_consumer_quota (
     id BIGINT PRIMARY KEY,
     consumer_id BIGINT NOT NULL,
     max_requests BIGINT NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS t_consumer_quota (
     updated_at TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS t_consumer_event (
+CREATE TABLE t_consumer_event (
     id BIGINT PRIMARY KEY,
     consumer_id BIGINT NOT NULL,
     event VARCHAR(64) NOT NULL,

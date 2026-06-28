@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS t_billing_rule (
+CREATE TABLE t_billing_rule (
     id BIGINT PRIMARY KEY,
     rule_code VARCHAR(64) NOT NULL UNIQUE,
     rule_name VARCHAR(128) NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS t_billing_rule (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS t_bill (
+CREATE TABLE t_bill (
     id BIGINT PRIMARY KEY,
     bill_no VARCHAR(64) NOT NULL UNIQUE,
     bill_type VARCHAR(32) NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS t_bill (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS t_stats_snapshot (
+CREATE TABLE t_stats_snapshot (
     id BIGINT PRIMARY KEY,
     metric_name VARCHAR(64) NOT NULL,
     dimension VARCHAR(32) NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS t_stats_snapshot (
 
 CREATE INDEX idx_snapshot ON t_stats_snapshot(metric_name, snapshot_at);
 
-CREATE TABLE IF NOT EXISTS t_audit_log (
+CREATE TABLE t_audit_log (
     id BIGINT PRIMARY KEY,
     trace_id VARCHAR(64) NOT NULL,
     event_type VARCHAR(64) NOT NULL,

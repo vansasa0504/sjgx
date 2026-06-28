@@ -1,57 +1,47 @@
--- V010: User/Role/Permission tables + API key credential + catalog seed data
+-- V010: evolve identity tables and add API credential storage.
 
--- 用户表
-CREATE TABLE IF NOT EXISTS t_user (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(64) NOT NULL UNIQUE,
-    password_hash VARCHAR(128) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+ALTER TABLE t_user ADD COLUMN updated_at TIMESTAMP;
 
--- 用户权限码表
-CREATE TABLE IF NOT EXISTS t_user_permission (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+ALTER TABLE t_role ADD COLUMN created_at TIMESTAMP;
+
+CREATE TABLE t_user_permission (
+    id BIGINT PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    permission_code VARCHAR(64) NOT NULL,
-    UNIQUE KEY uk_user_perm (user_id, permission_code),
-    CONSTRAINT fk_user_perm FOREIGN KEY (user_id) REFERENCES t_user(id) ON DELETE CASCADE
+    permission_code VARCHAR(128) NOT NULL
 );
 
--- 角色表
-CREATE TABLE IF NOT EXISTS t_role (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(64) NOT NULL UNIQUE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+CREATE UNIQUE INDEX uk_user_perm ON t_user_permission(user_id, permission_code);
+CREATE INDEX idx_user_perm_user ON t_user_permission(user_id);
 
--- 角色权限码表
-CREATE TABLE IF NOT EXISTS t_role_permission (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+CREATE TABLE t_role_permission (
+    id BIGINT PRIMARY KEY,
     role_id BIGINT NOT NULL,
-    permission_code VARCHAR(64) NOT NULL,
-    UNIQUE KEY uk_role_perm (role_id, permission_code),
-    CONSTRAINT fk_role_perm FOREIGN KEY (role_id) REFERENCES t_role(id) ON DELETE CASCADE
+    permission_code VARCHAR(128) NOT NULL
 );
 
--- 用户角色关联表
-CREATE TABLE IF NOT EXISTS t_user_role (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+CREATE UNIQUE INDEX uk_role_perm ON t_role_permission(role_id, permission_code);
+CREATE INDEX idx_role_perm_role ON t_role_permission(role_id);
+
+CREATE TABLE t_user_role (
+    id BIGINT PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    role_id BIGINT NOT NULL,
-    UNIQUE KEY uk_user_role (user_id, role_id),
-    CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES t_user(id) ON DELETE CASCADE,
-    CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES t_role(id) ON DELETE CASCADE
+    role_id BIGINT NOT NULL
 );
 
--- 数据服务 API Key 凭证表（apiKey -> secret 映射）
-CREATE TABLE IF NOT EXISTS t_api_credential (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+CREATE UNIQUE INDEX uk_user_role ON t_user_role(user_id, role_id);
+CREATE INDEX idx_user_role_user ON t_user_role(user_id);
+CREATE INDEX idx_user_role_role ON t_user_role(role_id);
+
+CREATE TABLE t_api_credential (
+    id BIGINT PRIMARY KEY,
     api_key VARCHAR(128) NOT NULL UNIQUE,
     secret VARCHAR(256) NOT NULL,
     consumer_code VARCHAR(64) NOT NULL,
     service_code VARCHAR(128),
     enabled TINYINT NOT NULL DEFAULT 1,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
 );
+
+CREATE INDEX idx_api_credential_consumer ON t_api_credential(consumer_code);
+CREATE INDEX idx_api_credential_service ON t_api_credential(service_code);

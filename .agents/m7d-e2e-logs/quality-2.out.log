@@ -1,0 +1,51 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -------------------< com.platform:platform-quality >--------------------
+[INFO] Building platform-quality 0.1.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:3.2.5:run (default-cli) > test-compile @ platform-quality >>>
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ platform-quality ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ platform-quality ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ platform-quality ---
+[INFO] skip non existing resourceDirectory E:\project\sjgx\platform-quality\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ platform-quality ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:3.2.5:run (default-cli) < test-compile @ platform-quality <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:3.2.5:run (default-cli) @ platform-quality ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v3.2.5)
+
+2026-06-27T16:00:12.348+08:00  INFO 19852 --- [platform-quality] [           main] c.platform.quality.QualityApplication    : Starting QualityApplication using Java 17.0.19 with PID 19852 (E:\project\sjgx\platform-quality\target\classes started by jonny in E:\project\sjgx\platform-quality)
+2026-06-27T16:00:12.355+08:00  INFO 19852 --- [platform-quality] [           main] c.platform.quality.QualityApplication    : No active profile set, falling back to 1 default profile: "default"
+2026-06-27T16:00:15.418+08:00  INFO 19852 --- [platform-quality] [           main] o.s.cloud.context.scope.GenericScope     : BeanFactory id=95dbd385-6b6c-3811-a16b-6ec9f6115514
+2026-06-27T16:00:17.172+08:00  INFO 19852 --- [platform-quality] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8084 (http)
+2026-06-27T16:00:17.202+08:00  INFO 19852 --- [platform-quality] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-06-27T16:00:17.203+08:00  INFO 19852 --- [platform-quality] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.20]
+2026-06-27T16:00:17.484+08:00  INFO 19852 --- [platform-quality] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-06-27T16:00:17.489+08:00  INFO 19852 --- [platform-quality] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 4966 ms
+2026-06-27T16:00:21.081+08:00  INFO 19852 --- [platform-quality] [           main] o.s.cloud.commons.util.InetUtils         : Cannot determine local hostname
+2026-06-27T16:00:21.139+08:00  INFO 19852 --- [platform-quality] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 3 endpoint(s) beneath base path '/actuator'
+2026-06-27T16:00:21.298+08:00  INFO 19852 --- [platform-quality] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8084 (http) with context path ''
+2026-06-27T16:00:22.895+08:00  INFO 19852 --- [platform-quality] [           main] o.s.cloud.commons.util.InetUtils         : Cannot determine local hostname
+2026-06-27T16:00:22.923+08:00  INFO 19852 --- [platform-quality] [           main] c.platform.quality.QualityApplication    : Started QualityApplication in 13.639 seconds (process running for 14.696)
+2026-06-27T17:00:58.158+08:00  INFO 19852 --- [platform-quality] [nio-8084-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-06-27T17:00:58.162+08:00  INFO 19852 --- [platform-quality] [nio-8084-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-06-27T17:00:58.175+08:00  INFO 19852 --- [platform-quality] [nio-8084-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 10 ms

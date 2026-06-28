@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS t_data_service (
+CREATE TABLE t_data_service (
     id BIGINT PRIMARY KEY,
     service_code VARCHAR(64) NOT NULL UNIQUE,
     name VARCHAR(128) NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS t_data_service (
     updated_at TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS t_service_invoke_log (
+CREATE TABLE t_service_invoke_log (
     id BIGINT PRIMARY KEY,
     service_code VARCHAR(64) NOT NULL,
     consumer_code VARCHAR(64) NOT NULL,
