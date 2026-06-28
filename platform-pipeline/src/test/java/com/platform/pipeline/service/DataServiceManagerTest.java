@@ -1,16 +1,19 @@
 package com.platform.pipeline.service;
 
 import com.platform.common.exception.BusinessException;
+import com.platform.common.model.ServiceInvokeLog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DataServiceManagerTest {
@@ -30,6 +33,53 @@ class DataServiceManagerTest {
         assertEquals(DataServiceStatus.PUBLISHED, definition.status());
         assertEquals("{\"risk\":\"low\"}", response);
         assertEquals(1, manager.logWriter().logs().size());
+        ServiceInvokeLog log = manager.logWriter().logs().get(0);
+        assertNotNull(log.traceId());
+        assertNotNull(log.requestHash());
+        assertEquals(200, log.status());
+        assertEquals(ServiceInvokeLog.bytesOf(response), log.responseSize());
+    }
+
+    @Test
+    void requestHashIsConsistentBetweenSuccessAndFailureForSameBody() {
+        DataServiceManager manager = new DataServiceManager();
+        manager.register("svc-hash", "hash service", "route-hash");
+        manager.apply("svc-hash", DataServiceEvent.DEFINE);
+        manager.apply("svc-hash", DataServiceEvent.TEST);
+        manager.apply("svc-hash", DataServiceEvent.PUBLISH);
+        manager.putRouteData("route-hash", "{\"ok\":true}");
+        long timestamp = Instant.now().getEpochSecond();
+        String body = "{\"q\":\"same-body\"}";
+        String okSignature = manager.signatureUtil().sign("api-key", "secret", timestamp, "nonce-ok", body);
+        manager.invoke("svc-hash", "consumer-a", "api-key", timestamp, "nonce-ok", body, okSignature);
+        assertThrows(BusinessException.class, () -> manager.invoke("svc-hash", "consumer-a", "api-key",
+                timestamp, "nonce-fail", body, "bad-signature"));
+
+        List<ServiceInvokeLog> logs = manager.logWriter().logs();
+        ServiceInvokeLog successLog = logs.stream().filter(l -> l.status() == 200).findFirst().orElseThrow();
+        ServiceInvokeLog failureLog = logs.stream().filter(l -> l.status() != 200).findFirst().orElseThrow();
+        assertEquals(successLog.requestHash(), failureLog.requestHash(),
+                "request_hash must be identical for the same body regardless of success/failure");
+    }
+
+    @Test
+    void writesFailedInvokeLogWithTraceIdAndSanitizedError() {
+        DataServiceManager manager = new DataServiceManager();
+        manager.register("svc-risk", "风险数据", "route-risk");
+        manager.apply("svc-risk", DataServiceEvent.DEFINE);
+        manager.apply("svc-risk", DataServiceEvent.TEST);
+        manager.apply("svc-risk", DataServiceEvent.PUBLISH);
+        long timestamp = Instant.now().getEpochSecond();
+
+        assertThrows(BusinessException.class, () -> manager.invoke("svc-risk", "consumer-a", "api-key",
+                timestamp, "nonce-fail", "{}", "bad-signature", "trace-test-1"));
+
+        ServiceInvokeLog log = manager.logWriter().logs().get(0);
+        assertEquals("trace-test-1", log.traceId());
+        assertEquals("consumer-a", log.consumerCode());
+        assertEquals("AUTH-403", log.errorCode());
+        assertEquals(403, log.status());
+        assertNotNull(log.requestHash());
     }
 
     @Test

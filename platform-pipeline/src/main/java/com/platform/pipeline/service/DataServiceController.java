@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -83,9 +84,11 @@ public class DataServiceController {
     }
 
     @PostMapping("/{serviceCode}/invoke")
-    public Result<String> invoke(@PathVariable String serviceCode, @RequestBody InvokeRequest request) {
+    public Result<String> invoke(@PathVariable String serviceCode,
+                                 @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
+                                 @RequestBody InvokeRequest request) {
         return Result.ok(dataServiceManager.invoke(serviceCode, request.consumerCode(), request.apiKey(),
-                request.timestamp(), request.nonce(), request.params(), request.signature()));
+                request.timestamp(), request.nonce(), request.params(), request.signature(), traceId));
     }
 
     @GetMapping("/{serviceCode}/credentials")

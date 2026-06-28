@@ -1,6 +1,9 @@
 package com.platform.partner.consumer;
 
 import com.platform.common.exception.BusinessException;
+import com.platform.common.log.JdbcServiceInvokeLogRepository;
+import com.platform.common.model.Page;
+import com.platform.common.model.ServiceInvokeLog;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +22,7 @@ public class ConsumerService {
     private final QuotaCounter quotaCounter;
     private final JdbcTemplate jdbcTemplate;
     private final IdGenerator idGenerator;
+    private final JdbcServiceInvokeLogRepository invokeLogRepository;
 
     public ConsumerService() {
         this(new LocalQuotaCounter());
@@ -36,6 +40,7 @@ public class ConsumerService {
         this.quotaCounter = quotaCounter;
         this.jdbcTemplate = jdbcTemplate;
         this.idGenerator = jdbcTemplate != null ? new IdGenerator(jdbcTemplate) : null;
+        this.invokeLogRepository = jdbcTemplate != null ? new JdbcServiceInvokeLogRepository(jdbcTemplate) : null;
     }
 
     private boolean useDb() {
@@ -141,6 +146,14 @@ public class ConsumerService {
                     + ":" + rs.getString("to_status"));
         }
         return List.copyOf(events);
+    }
+
+    public Page<ServiceInvokeLog> logs(long consumerId, int page, int size) {
+        Consumer consumer = find(consumerId);
+        if (!useDb()) {
+            return Page.of(List.of(), 0, page <= 0 ? 1 : page, size <= 0 ? 10 : size);
+        }
+        return invokeLogRepository.findByConsumer(consumer.consumerCode(), page, size);
     }
 
     private Consumer require(long id) {

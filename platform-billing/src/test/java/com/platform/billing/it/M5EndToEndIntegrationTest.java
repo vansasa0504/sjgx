@@ -32,6 +32,7 @@ import com.platform.pipeline.ingest.JsonConverter;
 import com.platform.pipeline.ingest.RawDataRepository;
 import com.platform.pipeline.service.DataServiceEvent;
 import com.platform.pipeline.service.DataServiceManager;
+import com.platform.pipeline.service.ApiCredentialRepository;
 import com.platform.quality.executor.QualityCheckExecutor;
 import com.platform.quality.rule.QualityDimension;
 import com.platform.quality.rule.QualityRuleConfig;
@@ -85,10 +86,11 @@ class M5EndToEndIntegrationTest {
         dataServiceManager.apply("svc-risk", DataServiceEvent.TEST);
         dataServiceManager.apply("svc-risk", DataServiceEvent.PUBLISH);
         dataServiceManager.putRouteData("risk-route", "{\"score\":88}");
+        ApiCredentialRepository.CreatedCredential credential = dataServiceManager.createCredential("svc-risk", "c1");
         long timestamp = Instant.now().getEpochSecond();
-        String signature = dataServiceManager.signatureUtil().sign("api-key", "secret", timestamp, "n1", "{}");
+        String signature = dataServiceManager.signatureUtil().sign(credential.apiKey(), credential.secret(), timestamp, "n1", "{}");
 
-        String response = dataServiceManager.invoke("svc-risk", "c1", "api-key", timestamp, "n1", "{}", signature);
+        String response = dataServiceManager.invoke("svc-risk", "c1", credential.apiKey(), timestamp, "n1", "{}", signature);
 
         assertEquals("{\"score\":88}", response);
         assertEquals(1, dataServiceManager.logWriter().logs().size());
@@ -126,19 +128,21 @@ class M5EndToEndIntegrationTest {
 
         DataServiceManager manager = new DataServiceManager();
         manager.register("svc", "svc", "route");
+        ApiCredentialRepository.CreatedCredential credential = manager.createCredential("svc", "c1");
         long ts = Instant.now().getEpochSecond();
-        assertThrows(BusinessException.class, () -> manager.invoke("svc", "c1", "api-key", ts, "bad", "{}", "bad-signature"));
+        assertThrows(BusinessException.class, () -> manager.invoke("svc", "c1", credential.apiKey(), ts, "bad", "{}", "bad-signature"));
         manager.apply("svc", DataServiceEvent.DEFINE);
         manager.apply("svc", DataServiceEvent.TEST);
         manager.apply("svc", DataServiceEvent.PUBLISH);
         manager.putRouteData("route", "{}");
         for (int i = 0; i < 2; i++) {
             String nonce = "n" + i;
-            manager.invoke("svc", "c1", "api-key", ts, nonce, "{}", manager.signatureUtil().sign("api-key", "secret", ts, nonce, "{}"));
+            manager.invoke("svc", "c1", credential.apiKey(), ts, nonce, "{}",
+                    manager.signatureUtil().sign(credential.apiKey(), credential.secret(), ts, nonce, "{}"));
         }
         String nonce = "n3";
-        assertThrows(BusinessException.class, () -> manager.invoke("svc", "c1", "api-key", ts, nonce, "{}",
-                manager.signatureUtil().sign("api-key", "secret", ts, nonce, "{}")));
+        assertThrows(BusinessException.class, () -> manager.invoke("svc", "c1", credential.apiKey(), ts, nonce, "{}",
+                manager.signatureUtil().sign(credential.apiKey(), credential.secret(), ts, nonce, "{}")));
     }
 
     @Test

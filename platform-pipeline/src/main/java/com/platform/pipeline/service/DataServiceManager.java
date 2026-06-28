@@ -5,11 +5,15 @@ import com.platform.common.model.Page;
 import com.platform.common.model.ServiceInvokeLog;
 import com.platform.common.security.SignatureUtil;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import com.platform.common.db.IdGenerator;
@@ -19,7 +23,7 @@ public class DataServiceManager {
     private final Map<String, DataServiceDefinition> services = new ConcurrentHashMap<>();
     private final Map<String, String> routeData = new ConcurrentHashMap<>();
     private final DataServiceStateMachine stateMachine = new DataServiceStateMachine();
-    private final AsyncInvokeLogWriter logWriter = new AsyncInvokeLogWriter();
+    private final AsyncInvokeLogWriter logWriter;
     private final RateLimiter rateLimiter = new RateLimiter(2);
     private final CircuitBreaker circuitBreaker = new CircuitBreaker();
     private final SignatureUtil signatureUtil = new SignatureUtil(Clock.systemUTC());
@@ -40,6 +44,7 @@ public class DataServiceManager {
         this.apiCredentialRepository = apiCredentialRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.idGenerator = jdbcTemplate != null ? new IdGenerator(jdbcTemplate) : null;
+        this.logWriter = new AsyncInvokeLogWriter(jdbcTemplate);
     }
 
 
@@ -105,6 +110,9 @@ public class DataServiceManager {
     }
 
     public Page<ServiceInvokeLog> logs(String serviceCode, String consumerId, String status, int page, int size) {
+        if (logWriter.hasRepository()) {
+            return logWriter.findByService(serviceCode, consumerId, status, page, size);
+        }
         List<ServiceInvokeLog> filtered = logWriter.logs().stream()
                 .filter(l -> serviceCode == null || serviceCode.isBlank() || serviceCode.equals(l.serviceCode()))
                 .filter(l -> consumerId == null || consumerId.isBlank() || consumerId.equals(l.consumerCode()))
@@ -139,32 +147,51 @@ public class DataServiceManager {
      */
     public String invoke(String serviceCode, String consumerCode, String apiKey,
                          long timestamp, String nonce, String body, String signature) {
+        return invoke(serviceCode, consumerCode, apiKey, timestamp, nonce, body, signature, null);
+    }
+
+    public String invoke(String serviceCode, String consumerCode, String apiKey,
+                         long timestamp, String nonce, String body, String signature, String traceId) {
         long start = System.currentTimeMillis();
-        ApiCredentialRepository.ApiCredential credential = apiCredentialRepository.findByApiKey(apiKey);
-        String secret = credential.secret();
-        if (secret == null || secret.isBlank() || !credential.active()) {
-            throw new BusinessException("AUTH-403", "api key disabled");
+        String effectiveTraceId = traceId == null || traceId.isBlank() ? UUID.randomUUID().toString() : traceId;
+        String effectiveConsumer = consumerCode;
+        String requestHash = sha256(body);
+        try {
+            ApiCredentialRepository.ApiCredential credential = apiCredentialRepository.findByApiKey(apiKey);
+            String secret = credential.secret();
+            effectiveConsumer = credential.consumerCode();
+            if (secret == null || secret.isBlank() || !credential.active()) {
+                throw new BusinessException("AUTH-403", "api key disabled");
+            }
+            if (credential.serviceCode() != null && !credential.serviceCode().isBlank()
+                    && !credential.serviceCode().equals(serviceCode)) {
+                throw new BusinessException("AUTH-403", "api key service mismatch");
+            }
+            if (consumerCode != null && !consumerCode.isBlank() && !consumerCode.equals(credential.consumerCode())) {
+                throw new BusinessException("AUTH-403", "api key consumer mismatch");
+            }
+            signatureUtil.verify(apiKey, secret, timestamp, nonce, body, signature);
+            rateLimiter.acquire(effectiveConsumer + ':' + serviceCode);
+            DataServiceDefinition definition = require(serviceCode);
+            if (definition.status() != DataServiceStatus.PUBLISHED) {
+                throw new BusinessException("SERVICE-404", "service not published");
+            }
+            String result = circuitBreaker.call(() -> routeData.get(definition.routeKey()));
+            if (result == null) {
+                throw new BusinessException("SERVICE-404", "route not found");
+            }
+            writeInvokeLog(effectiveTraceId, serviceCode, effectiveConsumer, apiKey, requestHash,
+                    200, start, ServiceInvokeLog.bytesOf(result), null, null);
+            return result;
+        } catch (BusinessException ex) {
+            writeInvokeLog(effectiveTraceId, serviceCode, effectiveConsumer, apiKey, requestHash,
+                    statusFor(ex), start, 0L, ex.code(), sanitize(ex.getMessage()));
+            throw ex;
+        } catch (RuntimeException ex) {
+            writeInvokeLog(effectiveTraceId, serviceCode, effectiveConsumer, apiKey, requestHash,
+                    500, start, 0L, "SERVICE-500", sanitize(ex.getMessage()));
+            throw ex;
         }
-        if (credential.serviceCode() != null && !credential.serviceCode().isBlank()
-                && !credential.serviceCode().equals(serviceCode)) {
-            throw new BusinessException("AUTH-403", "api key service mismatch");
-        }
-        if (consumerCode != null && !consumerCode.isBlank() && !consumerCode.equals(credential.consumerCode())) {
-            throw new BusinessException("AUTH-403", "api key consumer mismatch");
-        }
-        signatureUtil.verify(apiKey, secret, timestamp, nonce, body, signature);
-        String effectiveConsumer = credential.consumerCode();
-        rateLimiter.acquire(effectiveConsumer + ':' + serviceCode);
-        DataServiceDefinition definition = require(serviceCode);
-        if (definition.status() != DataServiceStatus.PUBLISHED) {
-            throw new BusinessException("SERVICE-404", "service not published");
-        }
-        String result = circuitBreaker.call(() -> routeData.get(definition.routeKey()));
-        if (result == null) {
-            throw new BusinessException("SERVICE-404", "route not found");
-        }
-        logWriter.write(new ServiceInvokeLog(serviceCode, effectiveConsumer, null, 200, System.currentTimeMillis() - start, ServiceInvokeLog.bytesOf(result), Instant.now()));
-        return result;
     }
 
     public ApiCredentialRepository.CreatedCredential createCredential(String serviceCode, String consumerCode) {
@@ -188,6 +215,53 @@ public class DataServiceManager {
     public AsyncInvokeLogWriter logWriter() { return logWriter; }
     public SignatureUtil signatureUtil() { return signatureUtil; }
     public ApiCredentialRepository apiCredentialRepository() { return apiCredentialRepository; }
+
+    private void writeInvokeLog(String traceId, String serviceCode, String consumerCode, String apiKey,
+                                String requestHash, int status, long start, long responseSize,
+                                String errorCode, String errorMessage) {
+                // partner_code 暂留 null：当前凭证/服务定义未关联 partner，留 P0-07 catalog-application 补充
+        logWriter.write(new ServiceInvokeLog(traceId, serviceCode, consumerCode, null, apiKey, requestHash,
+                status, System.currentTimeMillis() - start, responseSize, errorCode, errorMessage, Instant.now()));
+    }
+
+    private int statusFor(BusinessException ex) {
+        String code = ex.code();
+        if (code == null) {
+            return 400;
+        }
+        if (code.contains("429")) {
+            return 429;
+        }
+        if (code.startsWith("AUTH-404") || code.startsWith("AUTH-401")) {
+            return 401;
+        }
+        if (code.startsWith("AUTH-403")) {
+            return 403;
+        }
+        if (code.startsWith("SERVICE-404")) {
+            return 404;
+        }
+        if (code.startsWith("SERVICE-503")) {
+            return 503;
+        }
+        return 400;
+    }
+
+    private String sanitize(String message) {
+        if (message == null) {
+            return null;
+        }
+        return message.replaceAll("(?i)(secret|api[_-]?key|signature)\\s*[:=]\\s*\\S+", "$1=***");
+    }
+
+    private String sha256(String body) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest((body == null ? "" : body).getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception ex) {
+            throw new BusinessException("AUTH-500", "request hash failed");
+        }
+    }
 
     private DataServiceDefinition require(String serviceCode) {
         DataServiceDefinition definition = services.get(serviceCode);

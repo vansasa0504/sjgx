@@ -521,3 +521,130 @@ Tests:      35 passed
 - `API_CREDENTIAL_SM4_KEY` 未配置时仅非生产 profile 使用本地开发默认值；生产 profile（`prod`/`production`）缺失该变量会拒绝启动。
 - V012 会将旧 `secret` 列改为固定占位；若环境中已有旧明文凭证，需要迁移后重新创建新凭证。
 - 当前未接入真实 KMS，符合 P0-04 范围约束，KMS 留后续任务。
+
+---
+
+## 15. P0-05 调用日志事实源开发记录（2026-06-28）
+
+### 15.1 前置与口径
+
+- P0-04 已提交：`f10ca229 feat(P0-04): secure API credentials with ciphertext storage and server-side lookup`。
+- 本次基于 `ai/p0-invoke-log` 开发，任务口径更新为 V013/U013，避免与 P0-04 的 V012 冲突。
+
+### 15.2 完成项
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| `t_service_invoke_log` 补字段 | 已完成 | V013/U013 与 DM 版本补 `trace_id/partner_code/api_key/request_hash/error_code/error_message` 和索引 |
+| 统一 JDBC 仓储 | 已完成 | 新增 `JdbcServiceInvokeLogRepository`，作为 pipeline/partner/billing 共用事实源 |
+| 成功/失败调用写日志 | 已完成 | `DataServiceManager.invoke` 成功/失败均写入，支持 `X-Trace-Id` 透传或自动生成 |
+| request_hash | 已完成 | 凭证查到后用 secret 做 HMAC-SHA256；鉴权前失败回退 SHA-256，不存明文 params |
+| 消费方日志查询 | 已完成 | `ConsumerController.logs` 改为按 `consumer_code` 查事实表分页 |
+| 服务日志查询 | 已完成 | `DataServiceController.logs` 通过 `DataServiceManager` 读取 JDBC/内存日志源 |
+| billing/stats 衔接 | 已完成 | 账单生成和 XXL-Job 日志供应源可从事实表取数；stats report 也可基于事实表输出 |
+| 前端列对齐 | 已完成 | ConsumerView/ServiceView 日志列增加 trace、耗时、响应大小、request_hash、错误 |
+
+### 15.3 测试结果
+
+```text
+mvn test -pl platform-billing -am "-Dspring.profiles.active=jdbc"
+
+platform-common:   SUCCESS
+platform-partner:  SUCCESS
+platform-quality:  SUCCESS
+platform-pipeline: SUCCESS
+platform-billing:  SUCCESS
+Total: Tests run: 31, Failures: 0, Errors: 0（billing 模块汇总；-am 已回归依赖模块）
+BUILD SUCCESS
+
+mvn test "-Dspring.profiles.active=jdbc"
+Reactor: sjgx-platform / platform-common / platform-gateway / platform-auth / platform-partner / platform-quality / platform-pipeline / platform-billing all SUCCESS
+Total time: 02:13 min
+BUILD SUCCESS
+
+npm run test:unit
+Test Files: 11 passed
+Tests:      35 passed
+```
+
+### 15.4 关键验证
+
+- `JdbcServiceInvokeLogRepositoryTest`：保存日志并按 service/consumer/status 查询。
+- `DataServiceManagerTest`：成功日志含 `traceId/requestHash/responseSize`；失败日志含 `traceId/requestHash/errorCode/status`。
+- `ConsumerControllerTest`：standalone MockMvc 验证 `/api/v1/consumers/{id}/logs` 从事实表返回非空分页。
+- `BillingControllerTest`：有 JDBC 日志仓储时，账单生成不依赖请求体 logs，而从事实表聚合。
+- `BillingGovernanceTest`：V013 迁移补字段可执行，`TRACE_ID/REQUEST_HASH` 存在。
+
+### 15.5 风险与后续
+
+- `JdbcServiceInvokeLogRepository.findAll()` 当前为最小实现后在内存分页，适合 P0 功能闭环；大表高并发分页优化留后续性能任务。
+- trace_id 已进入调用日志，审计防篡改与更完整的 audit 链路仍留 P0-08。
+## 16. P0-05 返工记录（RW-1~RW-5，2026-06-28）
+
+依据 `reviews/claude-review-P0-05.md` §8 返工清单，修复 RW-1~RW-5：
+
+| 编号 | 问题 | 修复 | 测试 |
+|---|---|---|---|
+| RW-1 | request_hash 算法不一致（成功 HMAC/失败 SHA-256） | 统一为 `sha256(body)`，与 secret 解耦；删除 `hmacSha256` 方法 | `requestHashIsConsistentBetweenSuccessAndFailure`：同一 body 成功/失败 hash 相等 |
+| RW-2 | partner_code 列永远为空 | 标注暂留 null（凭证/服务定义未关联 partner，留 P0-07 补充），`writeInvokeLog` 加注释 | — |
+| RW-3 | logs() 全表内存分页 | `findByConsumer`/`findByService` 改 SQL 层 `WHERE + LIMIT/OFFSET + ORDER BY + COUNT`；`DataServiceManager.logs` 接 `logWriter.findByService`；`findAll` 保留给聚合 | `JdbcServiceInvokeLogRepositoryTest` 覆盖 |
+| RW-4 | localMirror 无界增长 | `AsyncInvokeLogWriter.write` 改 if/else：repository 非 null 时只落库，null 时才写 localMirror | — |
+| RW-5 | 聚合一致性多调用测试缺失 | 新增 `aggregationMatchesMultipleInvokes`：写 3 条日志 → 账单金额 = 3 × 单价 | `BillingControllerTest` |
+
+### 16.1 测试结果
+
+```text
+mvn test "-Dspring.profiles.active=jdbc"
+platform-common:   29 tests PASS
+platform-gateway:  2 tests PASS
+platform-auth:     33 tests PASS
+platform-partner:  30 tests PASS
+platform-quality:  18 tests PASS
+platform-pipeline: 60 tests PASS (含 RW-1 hash 一致性)
+platform-billing:  32 tests PASS (含 RW-5 多调用聚合)
+BUILD SUCCESS
+
+npm run test:unit
+11 files / 35 tests PASS
+```
+
+### 16.2 已知遗留（低优，不阻断合入）
+
+- RW-6 trace_id 贯穿 audit：留 P0-08。
+- `findAll()` 仍为全表读取，仅用于 billing/stats 聚合，非查询端点；大表优化留 P2-01。
+- partner_code 填充留 P0-07 catalog-application。
+
+## 16. P0-05 返工记录（RW-1~RW-5，2026-06-28）
+
+依据 `reviews/claude-review-P0-05.md` §8 返工清单，修复 RW-1~RW-5：
+
+| 编号 | 问题 | 修复 | 测试 |
+|---|---|---|---|
+| RW-1 | request_hash 算法不一致（成功 HMAC/失败 SHA-256） | 统一为 `sha256(body)`，与 secret 解耦；删除 `hmacSha256` 方法 | `requestHashIsConsistentBetweenSuccessAndFailure`：同一 body 成功/失败 hash 相等 |
+| RW-2 | partner_code 列永远为空 | 标注暂留 null（凭证/服务定义未关联 partner，留 P0-07 补充），`writeInvokeLog` 加注释 | — |
+| RW-3 | logs() 全表内存分页 | `findByConsumer`/`findByService` 改 SQL 层 `WHERE + LIMIT/OFFSET + ORDER BY + COUNT`；`DataServiceManager.logs` 接 `logWriter.findByService`；`findAll` 保留给聚合 | `JdbcServiceInvokeLogRepositoryTest` 覆盖 |
+| RW-4 | localMirror 无界增长 | `AsyncInvokeLogWriter.write` 改 if/else：repository 非 null 时只落库，null 时才写 localMirror | — |
+| RW-5 | 聚合一致性多调用测试缺失 | 新增 `aggregationMatchesMultipleInvokes`：写 3 条日志 → 账单金额 = 3 × 单价 | `BillingControllerTest` |
+
+### 16.1 测试结果
+
+```text
+mvn test "-Dspring.profiles.active=jdbc"
+platform-common:   29 tests PASS
+platform-gateway:  2 tests PASS
+platform-auth:     33 tests PASS
+platform-partner:  30 tests PASS
+platform-quality:  18 tests PASS
+platform-pipeline: 60 tests PASS (含 RW-1 hash 一致性)
+platform-billing:  32 tests PASS (含 RW-5 多调用聚合)
+BUILD SUCCESS
+
+npm run test:unit
+11 files / 35 tests PASS
+```
+
+### 16.2 已知遗留（低优，不阻断合入）
+
+- RW-6 trace_id 贯穿 audit：留 P0-08。
+- `findAll()` 仍为全表读取，仅用于 billing/stats 聚合，非查询端点；大表优化留 P2-01。
+- partner_code 填充留 P0-07 catalog-application。

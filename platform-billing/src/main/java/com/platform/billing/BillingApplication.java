@@ -21,7 +21,9 @@ import com.platform.billing.stats.StatsAggregator;
 import com.platform.billing.stats.StatsSnapshotRepository;
 import com.platform.common.audit.AuditLogRepository;
 import com.platform.common.audit.InMemoryAuditLogRepository;
+import com.platform.common.log.JdbcServiceInvokeLogRepository;
 import java.math.BigDecimal;
+import java.util.List;
 import org.springframework.boot.SpringApplication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -71,6 +73,12 @@ public class BillingApplication {
     }
 
     @Bean
+    JdbcServiceInvokeLogRepository jdbcServiceInvokeLogRepository(
+            @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate == null ? null : new JdbcServiceInvokeLogRepository(jdbcTemplate);
+    }
+
+    @Bean
     StatsSnapshotRepository statsSnapshotRepository(
             @Autowired(required = false) JdbcTemplate jdbcTemplate) {
         return jdbcTemplate != null
@@ -109,5 +117,21 @@ public class BillingApplication {
     @Bean
     AuditTraceService auditTraceService(AuditLogRepository auditLogRepository) {
         return new AuditTraceService(auditLogRepository);
+    }
+
+    @Bean
+    com.platform.billing.job.BillGeneratorJobHandler billGeneratorJobHandler(
+            BillGenerator billGenerator,
+            @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
+        return new com.platform.billing.job.BillGeneratorJobHandler(billGenerator,
+                () -> invokeLogRepository == null ? List.of() : invokeLogRepository.findAll());
+    }
+
+    @Bean
+    com.platform.billing.job.StatsAggregatorJobHandler statsAggregatorJobHandler(
+            StatsAggregator statsAggregator,
+            @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
+        return new com.platform.billing.job.StatsAggregatorJobHandler(statsAggregator,
+                () -> invokeLogRepository == null ? List.of() : invokeLogRepository.findAll());
     }
 }

@@ -75,7 +75,7 @@ public class ConsumerController {
     public Result<Page<ServiceInvokeLog>> logs(@PathVariable long id,
                                                @RequestParam(defaultValue = "1") int page,
                                                @RequestParam(defaultValue = "10") int size) {
-        return Result.ok(Page.of(List.of(), 0, page, size));
+        return Result.ok(consumerService.logs(id, page, size));
     }
 
     public record RegisterConsumerRequest(String code, String name, String bizLine, String systemType, String complianceLevel) {

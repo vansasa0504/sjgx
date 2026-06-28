@@ -55,6 +55,10 @@ const drawerColumns = [
   { prop: 'eventType', label: '事件类型' },
   { prop: 'serviceCode', label: '服务编码' },
   { prop: 'status', label: '状态' },
+  { prop: 'elapsedMillis', label: '耗时(ms)' },
+  { prop: 'responseSize', label: '响应(bytes)' },
+  { prop: 'requestHash', label: '请求哈希' },
+  { prop: 'error', label: '错误' },
   { prop: 'createdAt', label: '时间' }
 ]
 const createFields: FormField[] = [

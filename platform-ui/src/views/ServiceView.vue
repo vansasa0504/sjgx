@@ -72,7 +72,10 @@ const logColumns = [
   { prop: 'consumerCode', label: '消费方' },
   { prop: 'serviceCode', label: '服务编码' },
   { prop: 'status', label: '状态' },
-  { prop: 'message', label: '消息' },
+  { prop: 'elapsedMillis', label: '耗时(ms)' },
+  { prop: 'responseSize', label: '响应(bytes)' },
+  { prop: 'requestHash', label: '请求哈希' },
+  { prop: 'error', label: '错误' },
   { prop: 'createdAt', label: '时间' }
 ]
 const credentialColumns = [

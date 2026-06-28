@@ -17,7 +17,7 @@ class StatsControllerTest {
         var billRepository = new InMemoryBillRepository();
         var auditLogRepository = new InMemoryAuditLogRepository();
         StatsController controller = new StatsController(snapshotRepository, billRepository,
-                new DashboardService(), new ReportGenerator(), new AuditTraceService(auditLogRepository));
+                new DashboardService(), new ReportGenerator(), new AuditTraceService(auditLogRepository), null);
 
         assertEquals(0L, controller.dashboard().data().invokeCount());
         assertEquals(0, controller.audit("PARTNER", null, null).data().size());

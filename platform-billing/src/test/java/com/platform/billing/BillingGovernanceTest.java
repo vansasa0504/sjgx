@@ -154,7 +154,8 @@ class BillingGovernanceTest {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource());
         String sql = Files.readString(Path.of("..", "db", "migration", "V005__data_service.sql")) + ";" + System.lineSeparator()
                 + Files.readString(Path.of("..", "db", "migration", "V008__governance.sql")) + ";" + System.lineSeparator()
-                + Files.readString(Path.of("..", "db", "migration", "V009__perf_and_compat.sql"));
+                + Files.readString(Path.of("..", "db", "migration", "V009__perf_and_compat.sql")) + ";" + System.lineSeparator()
+                + Files.readString(Path.of("..", "db", "migration", "V013__service_invoke_log_fact_source.sql"));
         for (String statement : sql.split(";")) {
             if (!statement.isBlank() && !statement.trim().startsWith("--")) {
                 jdbcTemplate.execute(statement);
@@ -168,6 +169,14 @@ class BillingGovernanceTest {
         assertEquals(1, jdbcTemplate.queryForList("""
                 SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_NAME = 'T_SERVICE_INVOKE_LOG' AND COLUMN_NAME = 'RESPONSE_SIZE'
+                """).size());
+        assertEquals(1, jdbcTemplate.queryForList("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'T_SERVICE_INVOKE_LOG' AND COLUMN_NAME = 'TRACE_ID'
+                """).size());
+        assertEquals(1, jdbcTemplate.queryForList("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'T_SERVICE_INVOKE_LOG' AND COLUMN_NAME = 'REQUEST_HASH'
                 """).size());
     }
 

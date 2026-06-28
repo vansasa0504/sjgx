@@ -9,12 +9,14 @@ import com.platform.billing.model.BillType;
 import com.platform.billing.model.TargetType;
 import com.platform.billing.rule.BillingRule;
 import com.platform.billing.rule.BillingRuleRepository;
+import com.platform.common.log.JdbcServiceInvokeLogRepository;
 import com.platform.common.model.Result;
 import com.platform.common.model.ServiceInvokeLog;
 import com.platform.common.security.RequirePermission;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,13 +33,16 @@ public class BillingController {
     private final BillGenerator billGenerator;
     private final BillRepository billRepository;
     private final BillService billService;
+    private final JdbcServiceInvokeLogRepository invokeLogRepository;
 
     public BillingController(BillingRuleRepository ruleRepository, BillGenerator billGenerator,
-                             BillRepository billRepository, BillService billService) {
+                             BillRepository billRepository, BillService billService,
+                             @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
         this.ruleRepository = ruleRepository;
         this.billGenerator = billGenerator;
         this.billRepository = billRepository;
         this.billService = billService;
+        this.invokeLogRepository = invokeLogRepository;
     }
 
     @GetMapping("/rules")
@@ -73,7 +78,8 @@ public class BillingController {
     @PostMapping("/bills/generate")
     @RequirePermission("billing:run")
     public Result<Bill> generate(@RequestBody GenerateBillRequest request) {
-        List<ServiceInvokeLog> logs = request.logs() == null ? List.of() : request.logs();
+        List<ServiceInvokeLog> logs = invokeLogRepository != null ? invokeLogRepository.findAll()
+                : request.logs() == null ? List.of() : request.logs();
         return Result.ok(billGenerator.generate(request.billType(), request.period(),
                 request.start(), request.end(), logs));
     }
