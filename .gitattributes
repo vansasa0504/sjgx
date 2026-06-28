@@ -1,1 +1,2 @@
 db/migration/*.sql text eol=lf
+db/migration-dm/*.sql text eol=lf
