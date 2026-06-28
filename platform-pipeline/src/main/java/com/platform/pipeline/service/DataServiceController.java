@@ -88,6 +88,34 @@ public class DataServiceController {
                 request.timestamp(), request.nonce(), request.params(), request.signature()));
     }
 
+    @GetMapping("/{serviceCode}/credentials")
+    @RequirePermission("service:view")
+    public Result<List<CredentialView>> listCredentials(@PathVariable String serviceCode) {
+        return Result.ok(dataServiceManager.listCredentials(serviceCode).stream()
+                .map(CredentialView::from)
+                .toList());
+    }
+
+    @PostMapping("/{serviceCode}/credentials")
+    @RequirePermission("service:update")
+    public Result<CreatedCredentialResponse> createCredential(@PathVariable String serviceCode,
+                                                              @RequestBody CredentialRequest request) {
+        return Result.ok(CreatedCredentialResponse.from(
+                dataServiceManager.createCredential(serviceCode, request.consumerCode())));
+    }
+
+    @PostMapping("/credentials/{id}/rotate")
+    @RequirePermission("service:update")
+    public Result<CreatedCredentialResponse> rotateCredential(@PathVariable long id) {
+        return Result.ok(CreatedCredentialResponse.from(dataServiceManager.rotateCredential(id)));
+    }
+
+    @PostMapping("/credentials/{id}/disable")
+    @RequirePermission("service:update")
+    public Result<CredentialView> disableCredential(@PathVariable long id) {
+        return Result.ok(CredentialView.from(dataServiceManager.disableCredential(id)));
+    }
+
     public record RegisterServiceRequest(String serviceCode, String name, String routeKey) {
     }
 
@@ -96,5 +124,24 @@ public class DataServiceController {
 
     public record InvokeRequest(String consumerCode, String apiKey, long timestamp,
                                 String nonce, String params, String signature) {
+    }
+
+    public record CredentialRequest(String consumerCode) {
+    }
+
+    public record CredentialView(long id, String apiKey, String consumerCode, String serviceCode,
+                                 String status, Long rotatedFrom) {
+        static CredentialView from(ApiCredentialRepository.ApiCredential credential) {
+            return new CredentialView(credential.id(), credential.apiKey(), credential.consumerCode(),
+                    credential.serviceCode(), credential.status(), credential.rotatedFrom());
+        }
+    }
+
+    public record CreatedCredentialResponse(long id, String apiKey, String secret, String consumerCode,
+                                            String serviceCode, String status) {
+        static CreatedCredentialResponse from(ApiCredentialRepository.CreatedCredential credential) {
+            return new CreatedCredentialResponse(credential.id(), credential.apiKey(), credential.secret(),
+                    credential.consumerCode(), credential.serviceCode(), credential.status());
+        }
     }
 }

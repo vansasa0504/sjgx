@@ -2,12 +2,15 @@ package com.platform.pipeline.service;
 
 import com.platform.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DataServiceManagerTest {
@@ -42,6 +45,73 @@ class DataServiceManagerTest {
         String response = manager.invoke("svc-demo", "consumer-a", "api-key", timestamp, "nonce-default", "{}", signature);
 
         assertEquals("{\"status\":\"ok\"}", response);
+    }
+
+    @Test
+    void storesCredentialSecretEncryptedAndUsesServerSideLookup() {
+        ApiCredentialRepository repository = new ApiCredentialRepository(null, "unit-test-key");
+        ApiCredentialRepository.CreatedCredential credential = repository.create("consumer-a", "svc-secure");
+        ApiCredentialRepository.StoredSecretSnapshot stored = repository.storedSecretSnapshot(credential.apiKey());
+
+        assertNotEquals(credential.secret(), stored.secretCipher());
+        assertFalse(stored.secretCipher().contains(credential.secret()));
+        assertFalse(stored.secretHash().contains(credential.secret()));
+        assertEquals(credential.secret(), repository.findByApiKey(credential.apiKey()).secret());
+    }
+
+    @Test
+    void productionProfileRequiresConfiguredCredentialSm4Key() {
+        Assumptions.assumeTrue(System.getenv("API_CREDENTIAL_SM4_KEY") == null || System.getenv("API_CREDENTIAL_SM4_KEY").isBlank());
+        String previous = System.getProperty("spring.profiles.active");
+        System.setProperty("spring.profiles.active", "prod");
+        try {
+            assertThrows(IllegalStateException.class, ApiCredentialRepository::new);
+        } finally {
+            if (previous == null) {
+                System.clearProperty("spring.profiles.active");
+            } else {
+                System.setProperty("spring.profiles.active", previous);
+            }
+        }
+    }
+
+    @Test
+    void verifiesSignatureWithCredentialRejectsBadExpiredAndReplayRequests() {
+        DataServiceManager manager = new DataServiceManager(new ApiCredentialRepository(null, "unit-test-key"));
+        manager.register("svc-secure", "安全服务", "route-secure");
+        manager.apply("svc-secure", DataServiceEvent.DEFINE);
+        manager.apply("svc-secure", DataServiceEvent.TEST);
+        manager.apply("svc-secure", DataServiceEvent.PUBLISH);
+        ApiCredentialRepository.CreatedCredential credential = manager.createCredential("svc-secure", "consumer-a");
+        long timestamp = Instant.now().getEpochSecond();
+        String signature = manager.signatureUtil().sign(credential.apiKey(), credential.secret(), timestamp, "nonce-ok", "{}");
+
+        assertEquals("{\"status\":\"ok\"}", manager.invoke("svc-secure", null, credential.apiKey(), timestamp, "nonce-ok", "{}", signature));
+        assertThrows(BusinessException.class, () -> manager.invoke("svc-secure", null, credential.apiKey(), timestamp, "nonce-ok", "{}", signature));
+        assertThrows(BusinessException.class, () -> manager.invoke("svc-secure", null, credential.apiKey(), timestamp, "nonce-bad", "{}", "bad"));
+        String expired = manager.signatureUtil().sign(credential.apiKey(), credential.secret(), timestamp - 1_000, "nonce-expired", "{}");
+        assertThrows(BusinessException.class, () -> manager.invoke("svc-secure", null, credential.apiKey(), timestamp - 1_000, "nonce-expired", "{}", expired));
+    }
+
+    @Test
+    void rotationDisablesOldKeyAndDisableRejectsCurrentKey() {
+        DataServiceManager manager = new DataServiceManager(new ApiCredentialRepository(null, "unit-test-key"));
+        manager.register("svc-secure", "安全服务", "route-secure");
+        manager.apply("svc-secure", DataServiceEvent.DEFINE);
+        manager.apply("svc-secure", DataServiceEvent.TEST);
+        manager.apply("svc-secure", DataServiceEvent.PUBLISH);
+        ApiCredentialRepository.CreatedCredential oldCredential = manager.createCredential("svc-secure", "consumer-a");
+        ApiCredentialRepository.CreatedCredential newCredential = manager.rotateCredential(oldCredential.id());
+        long timestamp = Instant.now().getEpochSecond();
+        String oldSignature = manager.signatureUtil().sign(oldCredential.apiKey(), oldCredential.secret(), timestamp, "old-nonce", "{}");
+        String newSignature = manager.signatureUtil().sign(newCredential.apiKey(), newCredential.secret(), timestamp, "new-nonce", "{}");
+
+        assertThrows(BusinessException.class, () -> manager.invoke("svc-secure", null, oldCredential.apiKey(), timestamp, "old-nonce", "{}", oldSignature));
+        assertEquals("{\"status\":\"ok\"}", manager.invoke("svc-secure", null, newCredential.apiKey(), timestamp, "new-nonce", "{}", newSignature));
+
+        manager.disableCredential(newCredential.id());
+        String disabledSignature = manager.signatureUtil().sign(newCredential.apiKey(), newCredential.secret(), timestamp, "disabled-nonce", "{}");
+        assertThrows(BusinessException.class, () -> manager.invoke("svc-secure", null, newCredential.apiKey(), timestamp, "disabled-nonce", "{}", disabledSignature));
     }
 
     @Test

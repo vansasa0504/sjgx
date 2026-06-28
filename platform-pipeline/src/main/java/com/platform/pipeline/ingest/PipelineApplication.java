@@ -24,10 +24,10 @@ public class PipelineApplication {
 
     @Bean
     DataServiceManager dataServiceManager(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
-        return new DataServiceManager(new ApiCredentialRepository(), jdbcTemplate);
+        return new DataServiceManager(new ApiCredentialRepository(jdbcTemplate), jdbcTemplate);
     }
 
-@Bean
+    @Bean
     CatalogService catalogService(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
         return new CatalogService(jdbcTemplate);
     }

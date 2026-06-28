@@ -475,3 +475,49 @@ BUILD SUCCESS
 - AuthService UserRepository/RoleRepository 接口拆分（RW-4）未做：保留当前 AuthService 内 JdbcTemplate 实现，功能完整，留后续重构。
 - catalog/demo API Key 种子（RW-12）未做：留 P0-10 E2E 前置处理。
 - 达梦/OceanBase 真实环境 CLOB/SMALLINT 语义验证未做（沿用 P0-02 §12.3 未实测说明）。
+
+---
+
+## 14. P0-04 API 凭证安全开发记录（2026-06-28）
+
+### 14.1 完成项
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| invoke 移除 secret 入参 | 已完成 | `InvokeRequest` 不包含 `secret`，调用链按 `apiKey` 服务端查凭证并验签 |
+| secret 密文存储 | 已完成 | `t_api_credential` 新增 `secret_cipher`、`secret_hash`、`status`、`rotated_from`；旧 `secret` 列仅写固定占位 |
+| 凭证管理 API | 已完成 | 新增创建、列表、轮换、禁用端点，创建/轮换仅当次返回明文 secret |
+| 禁用与轮换 | 已完成 | 轮换会禁用旧 key，新 key 生效，并写入 `rotated_from`；禁用后调用拒绝 |
+| 前端入口 | 已完成 | ServiceView 增加凭证管理入口，支持创建、轮换、禁用 |
+| P0-04 审查返工 | 已完成 | 修复 RW-1~RW-3：生产密钥强制、rotated_from 写入、JDBC 轮换/禁用/list 测试 |
+
+### 14.2 测试结果
+
+```text
+mvn test -pl platform-pipeline -am "-Dspring.profiles.active=jdbc"
+
+platform-common:   Tests run: 28, Failures: 0, Errors: 0
+platform-quality:  Tests run: 18, Failures: 0, Errors: 0
+platform-pipeline: Tests run: 57, Failures: 0, Errors: 0
+BUILD SUCCESS
+
+npm run test:unit
+Test Files: 11 passed
+Tests:      35 passed
+```
+
+### 14.3 安全验证
+
+- `ApiCredentialRepositoryJdbcTest.jdbcStorageDoesNotPersistPlainSecret` 直接查询 `t_api_credential`，断言旧 `secret` 列为固定占位，`secret_cipher` 和 `secret_hash` 不包含明文 secret。
+- `ApiCredentialRepositoryJdbcTest` 补充 JDBC 轮换、禁用、list 过滤、hash 篡改拒绝、响应/日志/异常不含明文 secret 验证。
+- `DataServiceManagerTest` 覆盖正确签名通过、错误签名拒绝、时间戳过期拒绝、nonce 重放拒绝。
+- `DataServiceManagerTest.productionProfileRequiresConfiguredCredentialSm4Key` 覆盖生产 profile 未配置 `API_CREDENTIAL_SM4_KEY` 时拒绝启动。
+- `DataServiceManagerTest.rotationDisablesOldKeyAndDisableRejectsCurrentKey` 覆盖旧 key 拒绝、新 key 通过、禁用后拒绝。
+- MockMvc 覆盖凭证创建端点 200/401/403，以及 invoke 不传 `secret` 仍可工作。
+
+### 14.4 变更说明与风险
+
+- `POST /api/v1/services/{serviceCode}/invoke` 为破坏性变更：消费方请求体不再传 `secret`，只传 `consumerCode/apiKey/timestamp/nonce/params/signature`。
+- `API_CREDENTIAL_SM4_KEY` 未配置时仅非生产 profile 使用本地开发默认值；生产 profile（`prod`/`production`）缺失该变量会拒绝启动。
+- V012 会将旧 `secret` 列改为固定占位；若环境中已有旧明文凭证，需要迁移后重新创建新凭证。
+- 当前未接入真实 KMS，符合 P0-04 范围约束，KMS 留后续任务。

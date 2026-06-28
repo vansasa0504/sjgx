@@ -142,8 +142,18 @@ public class DataServiceManager {
         long start = System.currentTimeMillis();
         ApiCredentialRepository.ApiCredential credential = apiCredentialRepository.findByApiKey(apiKey);
         String secret = credential.secret();
+        if (secret == null || secret.isBlank() || !credential.active()) {
+            throw new BusinessException("AUTH-403", "api key disabled");
+        }
+        if (credential.serviceCode() != null && !credential.serviceCode().isBlank()
+                && !credential.serviceCode().equals(serviceCode)) {
+            throw new BusinessException("AUTH-403", "api key service mismatch");
+        }
+        if (consumerCode != null && !consumerCode.isBlank() && !consumerCode.equals(credential.consumerCode())) {
+            throw new BusinessException("AUTH-403", "api key consumer mismatch");
+        }
         signatureUtil.verify(apiKey, secret, timestamp, nonce, body, signature);
-        String effectiveConsumer = consumerCode != null ? consumerCode : credential.consumerCode();
+        String effectiveConsumer = credential.consumerCode();
         rateLimiter.acquire(effectiveConsumer + ':' + serviceCode);
         DataServiceDefinition definition = require(serviceCode);
         if (definition.status() != DataServiceStatus.PUBLISHED) {
@@ -155,6 +165,24 @@ public class DataServiceManager {
         }
         logWriter.write(new ServiceInvokeLog(serviceCode, effectiveConsumer, null, 200, System.currentTimeMillis() - start, ServiceInvokeLog.bytesOf(result), Instant.now()));
         return result;
+    }
+
+    public ApiCredentialRepository.CreatedCredential createCredential(String serviceCode, String consumerCode) {
+        require(serviceCode);
+        return apiCredentialRepository.create(consumerCode, serviceCode);
+    }
+
+    public List<ApiCredentialRepository.ApiCredential> listCredentials(String serviceCode) {
+        require(serviceCode);
+        return apiCredentialRepository.list(serviceCode);
+    }
+
+    public ApiCredentialRepository.CreatedCredential rotateCredential(long id) {
+        return apiCredentialRepository.rotate(id);
+    }
+
+    public ApiCredentialRepository.ApiCredential disableCredential(long id) {
+        return apiCredentialRepository.disable(id);
     }
 
     public AsyncInvokeLogWriter logWriter() { return logWriter; }
