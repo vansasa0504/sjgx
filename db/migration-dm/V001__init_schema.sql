@@ -1,0 +1,19 @@
+CREATE TABLE t_user (
+    id BIGINT PRIMARY KEY,
+    username VARCHAR(64) NOT NULL UNIQUE,
+    password_hash VARCHAR(128) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    created_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE t_role (
+    id BIGINT PRIMARY KEY,
+    code VARCHAR(64) NOT NULL UNIQUE,
+    name VARCHAR(128) NOT NULL
+);
+
+CREATE TABLE t_permission (
+    id BIGINT PRIMARY KEY,
+    code VARCHAR(128) NOT NULL UNIQUE,
+    name VARCHAR(128) NOT NULL
+);

@@ -2,7 +2,7 @@
 
 > 最后更新：2026-06-28
 > 项目：金融机构外部数据采集平台（sjgx）
-> 当前阶段：P0-01 返工中（Flyway 迁移修复）
+> 当前阶段：P0-02 返工完成，待 Claude Code 复审
 > 明天读取此文档后可直接继续开发，无需重新摸排代码
 
 ---
@@ -315,3 +315,90 @@ mvn -pl platform-common flyway:validate -Dflyway.url=jdbc:mysql://localhost:3306
 - 测试 API Key：写入 `t_api_credential`，不得使用生产真实密钥；生产 secret 后续由 P0-04 密文化。
 - 示例目录：如仍需要 E2E 种子，必须写入 `t_data_catalog`，不再使用 `t_data_catalog_item`。
 - `t_user.status` 为 `NOT NULL`，JDBC 创建用户必须写入状态，或补迁移默认值。
+
+---
+
+## 12. P0-02 国产库兼容返工记录（2026-06-28）
+
+### 12.1 方言策略与脚本位置
+
+P0-02 采用方言拆分策略：
+
+- `db/migration/`：MySQL 8.0 基线，同时供 OceanBase MySQL 模式复用。
+- `db/migration-dm/`：达梦 DM8 迁移脚本，版本号、表名、索引名与基线保持一致。
+- 达梦目录只做最小类型替换：`TEXT -> CLOB`，`TINYINT -> SMALLINT`。
+
+`db/migration-dm/` 刻意不放在 `db/migration/` 子目录下，因为 Flyway filesystem location 会递归扫描子目录；放在外层可以避免默认 MySQL/OceanBase location 扫到重复 V001~V010。
+
+### 12.2 三库迁移证据
+
+已补自动化测试：`platform-common/src/test/java/com/platform/common/db/MigrationDialectCompatibilityTest.java`。
+
+测试覆盖：
+
+- MySQL/OceanBase 基线：H2 MySQL mode 执行 `filesystem:../db/migration`，Flyway 成功应用 V001~V010，并通过 contract CRUD。
+- 达梦模拟：H2 标准模式执行 `filesystem:../db/migration-dm`，Flyway 成功应用 V001~V010，并通过同一组 contract CRUD。
+- 静态方言守护：扫描两套 V*.sql，断言不含 `AUTO_INCREMENT`、`ON UPDATE CURRENT_TIMESTAMP`、`ON DUPLICATE KEY UPDATE`、`JSON_`、手写 `LIMIT`；达梦目录额外断言不含 `TEXT`/`TINYINT`。
+
+关键测试输出摘录：
+
+```text
+MigrationDialectCompatibilityTest
+- mysql_ob_baseline: Successfully applied 10 migrations to schema "PUBLIC", now at version v010
+- dm_baseline: Successfully applied 10 migrations to schema "PUBLIC", now at version v010
+- Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+```
+
+本地全量回归已执行：
+
+```text
+Command: mvn test
+Finished: 2026-06-28 12:53:18 +08:00
+Reactor: sjgx-platform / platform-common / platform-gateway / platform-auth / platform-partner / platform-quality / platform-pipeline / platform-billing all SUCCESS
+Total time: 01:33 min
+Result: BUILD SUCCESS
+```
+
+### 12.3 未实测说明
+
+当前开发环境未提供合法可用的达梦 DM8 / OceanBase 实例或镜像；本次未宣称真实达梦/OceanBase 实测通过。
+
+已完成的验证范围：
+
+- MySQL 8.0 基线脚本保持不变，P0-01 已验证，P0-02 通过 H2 MySQL mode 继续回归。
+- OceanBase MySQL 模式暂复用 `db/migration/`，按 MySQL 兼容路径做自动化模拟验证。
+- 达梦使用 `db/migration-dm/`，按 H2 标准模式模拟验证迁移和 contract CRUD。
+
+上线前必须在真实环境补齐以下验证，不能以 H2 模拟替代上线门禁：
+
+1. 达梦 DM8 空库执行：
+
+```bash
+mvn -pl platform-common flyway:migrate \
+  -Dflyway.url=jdbc:dm://<host>:<port>/<schema> \
+  -Dflyway.user=<user> \
+  -Dflyway.password=<password> \
+  -Dflyway.locations=filesystem:db/migration-dm
+```
+
+2. 达梦 DM8 执行 `flyway:validate`，并跑核心 contract CRUD：`t_user`、`t_api_credential`、`t_service_invoke_log`、`t_billing_rule`、`t_raw_data` 插入/查询/更新。
+3. 达梦重点核对 `CLOB` 字段写入/读取语义：`t_raw_data.payload`、`t_ingest_task.mapping_config`、`t_data_catalog.field_definitions`、`t_audit_log.detail`。
+4. 达梦重点核对 `SMALLINT` 标志位：`t_api_credential.enabled`、`t_quality_rule.enabled`、`t_quality_weight.enabled`、`t_storage_policy.enabled`。
+5. OceanBase MySQL 模式空库执行：
+
+```bash
+mvn -pl platform-common flyway:migrate \
+  -Dflyway.url=jdbc:oceanbase://<host>:<port>/<schema> \
+  -Dflyway.user=<user> \
+  -Dflyway.password=<password> \
+  -Dflyway.locations=filesystem:db/migration
+```
+
+6. OceanBase 执行 `flyway:validate`，并跑同一组 contract CRUD。
+7. OceanBase 重点核对 MySQL 模式下 `TEXT`、`TINYINT`、`TIMESTAMP DEFAULT CURRENT_TIMESTAMP` 行为是否与 MySQL 8.0 一致。
+8. 三库均需核对索引名长度、唯一索引行为、`DECIMAL(12,6)/(16,4)/(20,4)` 精度、`DATE`/`TIMESTAMP` 写入读取，以及 V009 新增索引是否创建成功。
+
+### 12.4 低优协调项
+
+- `db.type=${DB_TYPE:MYSQL}` 当前未被分页/DAO 代码消费，因为项目现阶段分页仍是内存分页；保留为 P0-03 Repository 落库后接入 MyBatis-Plus 方言配置的预留项，避免本次为文档返工扩大代码改动。
+- `db/rollback/` 目录存在孤岛脚本（如 `db/rollback/U009__perf_and_compat.sql`），与 P0-01 审查 D-2 的 U0xx 目录统一建议一并处理。本次 P0-02 不删除/迁移 rollback 文件，避免影响回滚约定。
