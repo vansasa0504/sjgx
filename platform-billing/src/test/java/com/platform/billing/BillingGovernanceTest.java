@@ -8,6 +8,7 @@ import com.platform.billing.bill.Bill;
 import com.platform.billing.bill.BillGenerator;
 import com.platform.billing.bill.BillService;
 import com.platform.billing.bill.BillStateMachine;
+import com.platform.billing.bill.InMemoryBillItemRepository;
 import com.platform.billing.bill.InMemoryBillRepository;
 import com.platform.billing.dashboard.DashboardService;
 import com.platform.billing.finance.MockFinanceSystemAdapter;
@@ -74,15 +75,17 @@ class BillingGovernanceTest {
                 rule("count", BillingModel.BY_COUNT, consumerId, "1.00", 0)
         )));
         InMemoryBillRepository repository = new InMemoryBillRepository();
-        BillGenerator generator = new BillGenerator(engine, repository);
         Instant now = Instant.now();
-        Bill bill = generator.generate(BillType.EXPENSE, BillPeriod.DAILY, LocalDate.now(), LocalDate.now(), List.of(
+        BillGenerator generator = new BillGenerator(engine, repository, new InMemoryBillItemRepository(), () -> List.of(
                 new ServiceInvokeLog("svc", "c1", "p1", 200, 10, 128, now),
                 new ServiceInvokeLog("svc", "c1", "p1", 500, 20, 256, now)
         ));
+        Bill bill = generator.generate(BillType.EXPENSE, BillPeriod.DAILY, LocalDate.now(), LocalDate.now());
         BillService service = new BillService(repository, new BillStateMachine());
 
         assertEquals(new BigDecimal("2.0000"), bill.totalAmount());
+        assertEquals(bill.totalAmount(), bill.items().stream().map(com.platform.billing.bill.BillItem::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
         assertEquals(BillStatus.CONFIRMED, service.confirm(bill.billNo()).status());
         assertEquals(BillStatus.SETTLED, service.settle(bill.billNo()).status());
         assertThrows(BusinessException.class, () -> service.dispute(bill.billNo()));
@@ -135,15 +138,15 @@ class BillingGovernanceTest {
                         BillGenerator.stableTargetId("p2"), new BigDecimal("3.00"), "CNY", day.minusDays(1), day.plusDays(1), "ACTIVE", 0)
         )));
         InMemoryBillRepository repository = new InMemoryBillRepository();
-        BillGenerator generator = new BillGenerator(engine, repository);
         List<ServiceInvokeLog> logs = List.of(
                 new ServiceInvokeLog("svc-a", "c1", "p1", 200, 10, 20, Instant.now()),
                 new ServiceInvokeLog("svc-b", "c2", "p2", 200, 10, 30, Instant.now()),
                 new ServiceInvokeLog("svc-c", "c3", "p2", 200, 10, 40, Instant.now())
         );
+        BillGenerator generator = new BillGenerator(engine, repository, new InMemoryBillItemRepository(), () -> logs);
 
-        Bill first = generator.generate(BillType.SETTLEMENT, BillPeriod.DAILY, day, day, logs);
-        Bill second = generator.generate(BillType.SETTLEMENT, BillPeriod.DAILY, day, day, logs);
+        Bill first = generator.generate(BillType.SETTLEMENT, BillPeriod.DAILY, day, day);
+        Bill second = generator.generate(BillType.SETTLEMENT, BillPeriod.DAILY, day, day);
 
         assertEquals(first.billNo(), second.billNo());
         assertEquals(new BigDecimal("8.0000"), first.totalAmount());
@@ -155,16 +158,17 @@ class BillingGovernanceTest {
         String sql = Files.readString(Path.of("..", "db", "migration", "V005__data_service.sql")) + ";" + System.lineSeparator()
                 + Files.readString(Path.of("..", "db", "migration", "V008__governance.sql")) + ";" + System.lineSeparator()
                 + Files.readString(Path.of("..", "db", "migration", "V009__perf_and_compat.sql")) + ";" + System.lineSeparator()
-                + Files.readString(Path.of("..", "db", "migration", "V013__service_invoke_log_fact_source.sql"));
+                + Files.readString(Path.of("..", "db", "migration", "V013__service_invoke_log_fact_source.sql")) + ";" + System.lineSeparator()
+                + Files.readString(Path.of("..", "db", "migration", "V014__bill_item.sql"));
         for (String statement : sql.split(";")) {
             if (!statement.isBlank() && !statement.trim().startsWith("--")) {
                 jdbcTemplate.execute(statement);
             }
         }
 
-        assertEquals(6, jdbcTemplate.queryForList("""
+        assertEquals(7, jdbcTemplate.queryForList("""
                 SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
-                WHERE TABLE_NAME IN ('T_DATA_SERVICE', 'T_SERVICE_INVOKE_LOG', 'T_BILLING_RULE', 'T_BILL', 'T_STATS_SNAPSHOT', 'T_AUDIT_LOG')
+                WHERE TABLE_NAME IN ('T_DATA_SERVICE', 'T_SERVICE_INVOKE_LOG', 'T_BILLING_RULE', 'T_BILL', 'T_BILL_ITEM', 'T_STATS_SNAPSHOT', 'T_AUDIT_LOG')
                 """).size());
         assertEquals(1, jdbcTemplate.queryForList("""
                 SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS

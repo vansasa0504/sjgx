@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.platform.billing.bill.BillGenerator;
 import com.platform.billing.bill.BillService;
 import com.platform.billing.bill.BillStateMachine;
+import com.platform.billing.bill.InMemoryBillItemRepository;
 import com.platform.billing.bill.InMemoryBillRepository;
 import com.platform.billing.model.BillPeriod;
 import com.platform.billing.model.BillType;
@@ -27,10 +28,11 @@ class BillingControllerTest {
     void createsAndListsRule() {
         var ruleRepository = new InMemoryBillingRuleRepository();
         var billRepository = new InMemoryBillRepository();
+        var billItemRepository = new InMemoryBillItemRepository();
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
-        var billGenerator = new BillGenerator(engine, billRepository);
+        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, java.util.List::of);
         var billService = new BillService(billRepository, new BillStateMachine());
-        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billService, null);
+        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billItemRepository, billService);
 
         var rule = controller.createRule(new BillingController.CreateRuleRequest(
                 "count-c1", "count-c1", BillingModel.BY_COUNT, TargetType.CONSUMER, 1L,
@@ -52,15 +54,18 @@ class BillingControllerTest {
                 com.platform.billing.bill.BillGenerator.stableTargetId("c-bill"), new BigDecimal("1.00"),
                 "CNY", LocalDate.now().minusDays(1), LocalDate.now().plusDays(1), 0).toRule(null));
         var billRepository = new InMemoryBillRepository();
+        var billItemRepository = new InMemoryBillItemRepository();
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
-        var billGenerator = new BillGenerator(engine, billRepository);
+        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, invokeLogRepository::findAll);
         var billService = new BillService(billRepository, new BillStateMachine());
-        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billService, invokeLogRepository);
+        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billItemRepository, billService);
 
         var bill = controller.generate(new BillingController.GenerateBillRequest(
-                BillType.EXPENSE, BillPeriod.DAILY, LocalDate.now(), LocalDate.now(), null)).data();
+                BillType.EXPENSE, BillPeriod.DAILY, LocalDate.now(), LocalDate.now())).data();
 
         assertEquals(new BigDecimal("1.0000"), bill.totalAmount());
+        assertEquals(bill.totalAmount(), bill.items().stream().map(com.platform.billing.bill.BillItem::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 
     private void createInvokeLogTable(JdbcTemplate jdbcTemplate) {
@@ -104,13 +109,14 @@ class BillingControllerTest {
                 com.platform.billing.bill.BillGenerator.stableTargetId("c-agg"), new BigDecimal("1.00"),
                 "CNY", LocalDate.now().minusDays(1), LocalDate.now().plusDays(1), 0).toRule(null));
         var billRepository = new InMemoryBillRepository();
+        var billItemRepository = new InMemoryBillItemRepository();
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
-        var billGenerator = new BillGenerator(engine, billRepository);
+        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, invokeLogRepository::findAll);
         var billService = new BillService(billRepository, new BillStateMachine());
-        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billService, invokeLogRepository);
+        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billItemRepository, billService);
 
         var bill = controller.generate(new BillingController.GenerateBillRequest(
-                BillType.EXPENSE, BillPeriod.DAILY, LocalDate.now(), LocalDate.now(), null)).data();
+                BillType.EXPENSE, BillPeriod.DAILY, LocalDate.now(), LocalDate.now())).data();
 
         assertEquals(new BigDecimal("3.0000"), bill.totalAmount());
     }

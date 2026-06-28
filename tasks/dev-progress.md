@@ -614,6 +614,68 @@ npm run test:unit
 - `findAll()` 仍为全表读取，仅用于 billing/stats 聚合，非查询端点；大表优化留 P2-01。
 - partner_code 填充留 P0-07 catalog-application。
 
+---
+
+## 17. P0-06 账单明细开发与返工记录（2026-06-28）
+
+### 17.1 完成项
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| 账单事实源 | 已完成 | `BillGenerator.generate` 不再接收请求体 `logs`，统一从 `t_service_invoke_log` 事实源供应器读取账期内调用日志 |
+| 账单明细 | 已完成 | 新增 `t_bill_item`、`BillItemRepository`、JDBC/内存实现；生成账单时同时写 `t_bill` 与 `t_bill_item` |
+| 明细一致性 | 已完成 | `totalAmount = sum(items.amount)`，测试覆盖明细合计等于总额 |
+| 请求体篡改防护 | 已完成 | `GenerateBillRequest` 移除 `logs` 字段，请求体伪造 `logs` 不影响账单金额 |
+| 账单详情 | 已完成 | `GET /api/v1/billing/bills/{billNo}` 返回账单与明细 |
+| 费用统计 | 已完成 | `GET /api/v1/billing/stats` 从 `t_bill_item` 聚合，支持 `from/to/partnerId/consumerId/partnerCode/consumerCode` |
+| 状态机 | 已完成 | `confirm/dispute/adjust` 受控，非法流转返回 409 |
+| 前端对齐 | 已完成 | BillingView 移除 generate logs 入参，增加账单明细抽屉和真实费用统计 |
+
+### 17.2 聚合逻辑
+
+账单生成流程：
+
+```text
+t_service_invoke_log
+  -> 按账期 from/to 过滤
+  -> EXPENSE 按 consumerCode 分组，SETTLEMENT 按 partnerCode（为空时 serviceCode）分组
+  -> 构造 BillingUsage 并复用 BillingRuleEngine 计算每组金额
+  -> 生成 BillItem（refId 保存原始 target code，unitPrice 优先取匹配规则单价）
+  -> 写 t_bill + t_bill_item
+```
+
+`t_bill_item.ref_id` 不再保存 stable hash，而保存可过滤、可核对的原始 target code；规则匹配仍内部使用 `stableTargetId(targetCode)`。
+
+### 17.3 P0-06 返工闭环
+
+依据 `reviews/claude-review-P0-06.md`，已修复 RW-1~RW-6：
+
+| 编号 | 问题 | 修复 |
+|---|---|---|
+| RW-1 | `/billing/stats` partnerId/consumerId 过滤失效 | `refId` 改为原始 target code；stats 过滤改为按 `refId/partnerCode/consumerCode` 匹配，补 consumerId/partnerId 带参测试 |
+| RW-2 | V014 缺达梦版 | 补 `db/migration-dm/V014__bill_item.sql` 与 `U014__bill_item.sql`，MigrationDialectCompatibilityTest 纳入 `t_bill_item` CRUD |
+| RW-3 | U014 目录不一致 | 删除 `db/rollback/U014__bill_item.sql`，改为 `db/migration/U014__bill_item.sql` |
+| RW-4 | unitPrice 为平均价 | `unitPrice` 优先取匹配计费规则的真实单价；无规则时才回退为平均价 |
+| RW-5 | dev-progress 未更新 | 本章节记录聚合逻辑、明细一致性证据和 stats 语义 |
+| RW-6 | 分支隔离 | 改动保留在 `ai/p0-bill-item` 分支，不直接提交 master |
+
+### 17.4 测试结果
+
+```text
+mvn test -pl platform-billing -am "-Dspring.profiles.active=jdbc"
+结果：BUILD SUCCESS
+覆盖：账单明细一致性、请求体 logs 篡改无效、stats 200/401/403、stats consumerId/partnerId 带参聚合、状态机 409、V014 迁移、JDBC/内存仓储一致性。
+
+npm run test:unit
+结果：11 files / 35 tests PASS
+```
+
+### 17.5 语义说明
+
+- `partnerId/consumerId`：兼容数字型 `partnerCode/consumerCode` 或 `refId` 的过滤场景。
+- `partnerCode/consumerCode`：用于非数字业务编码的精确过滤。
+- 当前 P0-05 仍未填充真实 `partner_code` 的调用日志（见 P0-05 遗留），因此 SETTLEMENT 在 partnerCode 为空时按 serviceCode 兜底分组；P0-07 补 partner 关联后可自然进入 partnerCode 维度。
+
 ## 16. P0-05 返工记录（RW-1~RW-5，2026-06-28）
 
 依据 `reviews/claude-review-P0-05.md` §8 返工清单，修复 RW-1~RW-5：

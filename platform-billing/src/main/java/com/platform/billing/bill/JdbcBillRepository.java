@@ -15,10 +15,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class JdbcBillRepository implements BillRepository {
     private final JdbcTemplate jdbcTemplate;
     private final IdGenerator idGenerator;
+    private final BillItemRepository itemRepository;
 
     public JdbcBillRepository(JdbcTemplate jdbcTemplate) {
+        this(jdbcTemplate, null);
+    }
+
+    public JdbcBillRepository(JdbcTemplate jdbcTemplate, BillItemRepository itemRepository) {
         this.jdbcTemplate = jdbcTemplate;
         this.idGenerator = new IdGenerator(jdbcTemplate);
+        this.itemRepository = itemRepository;
     }
 
     @Override
@@ -47,7 +53,7 @@ public class JdbcBillRepository implements BillRepository {
                     Timestamp.from(createdAt), Timestamp.from(updatedAt));
         }
         return new Bill(id, bill.billNo(), bill.billType(), bill.billPeriod(), bill.periodStart(),
-                bill.periodEnd(), bill.totalAmount(), bill.status(), createdAt, updatedAt);
+                bill.periodEnd(), bill.totalAmount(), bill.status(), createdAt, updatedAt, bill.items());
     }
 
     @Override
@@ -76,6 +82,7 @@ public class JdbcBillRepository implements BillRepository {
                 rs.getBigDecimal("total_amount"),
                 BillStatus.valueOf(rs.getString("status")),
                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toInstant() : null,
-                rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toInstant() : null);
+                rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toInstant() : null,
+                itemRepository == null ? List.of() : itemRepository.findByBillNo(rs.getString("bill_no")));
     }
 }

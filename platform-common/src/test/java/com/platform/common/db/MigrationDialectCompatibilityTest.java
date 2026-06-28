@@ -82,6 +82,17 @@ class MigrationDialectCompatibilityTest {
                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_DATE, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, 1L, "rule-a", "Rule A", "BY_COUNT", "CONSUMER", 1L, new BigDecimal("1.250000"), "ACTIVE");
         jdbcTemplate.update("""
+                INSERT INTO t_bill
+                (id, bill_no, bill_type, bill_period, period_start, period_end, total_amount, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_DATE, CURRENT_DATE, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, 1L, "BILL-A", "EXPENSE", "DAILY", new BigDecimal("1.2500"), "GENERATED");
+        jdbcTemplate.update("""
+                INSERT INTO t_bill_item
+                (id, bill_id, bill_no, item_type, ref_id, quantity, unit_price, amount, period, consumer_code, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, 1L, 1L, "BILL-A", "CONSUMER", "consumer-a", 1L, new BigDecimal("1.250000"),
+                new BigDecimal("1.2500"), "DAILY:2026-06-28:2026-06-28", "consumer-a");
+        jdbcTemplate.update("""
                 INSERT INTO t_raw_data
                 (id, task_id, partner_id, batch_no, payload, quality_status, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -99,6 +110,8 @@ class MigrationDialectCompatibilityTest {
 
         jdbcTemplate.update("UPDATE t_user SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", "DISABLED", 1L);
         assertEquals("DISABLED", jdbcTemplate.queryForObject("SELECT status FROM t_user WHERE id = ?", String.class, 1L));
+        assertEquals(new BigDecimal("1.2500"),
+                jdbcTemplate.queryForObject("SELECT amount FROM t_bill_item WHERE id = ?", BigDecimal.class, 1L));
         assertPayload(jdbcTemplate.queryForObject("SELECT payload FROM t_raw_data WHERE id = ?", Object.class, 1L));
     }
 

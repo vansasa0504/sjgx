@@ -104,11 +104,36 @@ export interface BillingRule {
 }
 
 export interface Bill {
+  id?: number
   billNo: string
   billType?: string
-  period?: string
-  amount?: number
+  billPeriod?: string
+  periodStart?: string
+  periodEnd?: string
+  totalAmount?: number
   status?: string
+  items?: BillItem[]
+}
+
+export interface BillItem {
+  id?: number
+  itemType: string
+  refId: string
+  quantity: number
+  unitPrice: number
+  amount: number
+  period: string
+  serviceCode?: string
+  consumerCode?: string
+  partnerCode?: string
+}
+
+export interface BillingStats {
+  totalAmount: number
+  invokeCount: number
+  billCount: number
+  itemCount: number
+  amountByItemType: Record<string, number>
 }
 
 export interface UserAccount {

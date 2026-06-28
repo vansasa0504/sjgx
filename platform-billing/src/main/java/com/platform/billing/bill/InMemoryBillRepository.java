@@ -13,7 +13,7 @@ public class InMemoryBillRepository implements BillRepository {
     public Bill save(Bill bill) {
         Bill saved = new Bill(bill.id() == null ? ids.getAndIncrement() : bill.id(), bill.billNo(), bill.billType(),
                 bill.billPeriod(), bill.periodStart(), bill.periodEnd(), bill.totalAmount(), bill.status(),
-                bill.createdAt(), bill.updatedAt());
+                bill.createdAt(), bill.updatedAt(), bill.items());
         bills.removeIf(existing -> existing.billNo().equals(saved.billNo()));
         bills.add(saved);
         return saved;

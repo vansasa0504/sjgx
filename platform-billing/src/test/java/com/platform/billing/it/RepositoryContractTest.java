@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.platform.billing.bill.Bill;
+import com.platform.billing.bill.BillItem;
+import com.platform.billing.bill.JdbcBillItemRepository;
 import com.platform.billing.bill.JdbcBillRepository;
+import com.platform.billing.bill.InMemoryBillItemRepository;
 import com.platform.billing.bill.InMemoryBillRepository;
 import com.platform.billing.model.BillPeriod;
 import com.platform.billing.model.BillStatus;
@@ -33,13 +36,23 @@ class RepositoryContractTest {
     @Test
     void jdbcAndMemoryBillRepositoriesBehaveConsistently() {
         JdbcTemplate jdbc = migrate("contract_bill");
-        JdbcBillRepository jdbcRepo = new JdbcBillRepository(jdbc);
+        JdbcBillItemRepository jdbcItemRepo = new JdbcBillItemRepository(jdbc);
+        InMemoryBillItemRepository memItemRepo = new InMemoryBillItemRepository();
+        JdbcBillRepository jdbcRepo = new JdbcBillRepository(jdbc, jdbcItemRepo);
         InMemoryBillRepository memRepo = new InMemoryBillRepository();
 
         Bill bill = sampleBill("BILL-001");
 
-        jdbcRepo.save(bill);
-        memRepo.save(bill);
+        Bill jdbcBill = jdbcRepo.save(bill);
+        Bill memBill = memRepo.save(bill);
+        List<BillItem> jdbcItems = jdbcItemRepo.saveAll(jdbcBill.billNo(), jdbcBill.id(), List.of(sampleItem(jdbcBill)));
+        List<BillItem> memItems = memItemRepo.saveAll(memBill.billNo(), memBill.id(), List.of(sampleItem(memBill)));
+        jdbcRepo.save(new Bill(jdbcBill.id(), jdbcBill.billNo(), jdbcBill.billType(), jdbcBill.billPeriod(),
+                jdbcBill.periodStart(), jdbcBill.periodEnd(), jdbcBill.totalAmount(), jdbcBill.status(),
+                jdbcBill.createdAt(), jdbcBill.updatedAt(), jdbcItems));
+        memRepo.save(new Bill(memBill.id(), memBill.billNo(), memBill.billType(), memBill.billPeriod(),
+                memBill.periodStart(), memBill.periodEnd(), memBill.totalAmount(), memBill.status(),
+                memBill.createdAt(), memBill.updatedAt(), memItems));
 
         var jdbcFound = jdbcRepo.findByBillNo("BILL-001").orElseThrow();
         var memFound = memRepo.findByBillNo("BILL-001").orElseThrow();
@@ -47,6 +60,8 @@ class RepositoryContractTest {
         assertEquals(memFound.billNo(), jdbcFound.billNo());
         assertEquals(memFound.totalAmount(), jdbcFound.totalAmount());
         assertEquals(memFound.status(), jdbcFound.status());
+        assertEquals(memFound.items().size(), jdbcFound.items().size());
+        assertEquals(memFound.items().get(0).amount(), jdbcFound.items().get(0).amount());
 
         assertEquals(1, jdbcRepo.findAll().size());
         assertEquals(1, memRepo.findAll().size());
@@ -96,6 +111,12 @@ class RepositoryContractTest {
         return new Bill(null, billNo, BillType.EXPENSE, BillPeriod.DAILY,
                 LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 1),
                 new BigDecimal("99.0000"), BillStatus.GENERATED, Instant.now(), Instant.now());
+    }
+
+    private BillItem sampleItem(Bill bill) {
+        return new BillItem(null, bill.id(), bill.billNo(), "CONSUMER", "1", 99,
+                new BigDecimal("1.000000"), new BigDecimal("99.0000"), "DAILY:2026-06-01:2026-06-01",
+                "svc", "c1", null, Instant.now());
     }
 
     private JdbcTemplate migrate(String name) {

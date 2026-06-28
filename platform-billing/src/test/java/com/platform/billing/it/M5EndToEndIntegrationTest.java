@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.platform.billing.bill.Bill;
 import com.platform.billing.bill.BillGenerator;
+import com.platform.billing.bill.InMemoryBillItemRepository;
 import com.platform.billing.bill.InMemoryBillRepository;
 import com.platform.billing.model.BillPeriod;
 import com.platform.billing.model.BillType;
@@ -101,8 +102,8 @@ class M5EndToEndIntegrationTest {
                 new BillingRule(null, "count-c1", "count-c1", BillingModel.BY_COUNT, TargetType.CONSUMER,
                         BillGenerator.stableTargetId("c1"), BigDecimal.ONE, "CNY", today.minusDays(1), today.plusDays(1), "ACTIVE", 0)
         )));
-        Bill bill = new BillGenerator(engine, new InMemoryBillRepository()).generate(BillType.EXPENSE, BillPeriod.DAILY, today, today,
-                dataServiceManager.logWriter().logs());
+        Bill bill = new BillGenerator(engine, new InMemoryBillRepository(), new InMemoryBillItemRepository(),
+                () -> dataServiceManager.logWriter().logs()).generate(BillType.EXPENSE, BillPeriod.DAILY, today, today);
         assertEquals(new BigDecimal("1.0000"), bill.totalAmount());
 
         var snapshots = new StatsAggregator(new InMemoryStatsSnapshotRepository(), new FixedCacheMetricsProvider(new BigDecimal("0.95")))

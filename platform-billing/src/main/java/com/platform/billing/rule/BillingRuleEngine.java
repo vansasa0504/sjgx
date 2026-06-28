@@ -17,10 +17,7 @@ public class BillingRuleEngine {
     }
 
     public BigDecimal calculate(BillingUsage usage, LocalDate billingDate) {
-        List<BillingRule> matched = repository.activeRules(billingDate).stream()
-                .filter(rule -> rule.targetType() == usage.targetType())
-                .filter(rule -> rule.targetId() == null || rule.targetId().equals(usage.targetId()))
-                .toList();
+        List<BillingRule> matched = matchedRules(usage, billingDate);
         long allowance = matched.stream()
                 .filter(rule -> rule.billingModel() == BillingModel.BY_PACKAGE)
                 .mapToLong(BillingRule::packageAllowance)
@@ -30,6 +27,13 @@ public class BillingRuleEngine {
                 .map(rule -> calculators.get(rule.billingModel()).calculate(adjustedUsage, rule))
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(4, java.math.RoundingMode.HALF_UP);
+    }
+
+    public List<BillingRule> matchedRules(BillingUsage usage, LocalDate billingDate) {
+        return repository.activeRules(billingDate).stream()
+                .filter(rule -> rule.targetType() == usage.targetType())
+                .filter(rule -> rule.targetId() == null || rule.targetId().equals(usage.targetId()))
+                .toList();
     }
 
     public static BillingRuleEngine defaultEngine(BillingRuleRepository repository) {

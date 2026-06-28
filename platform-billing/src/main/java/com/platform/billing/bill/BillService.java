@@ -16,7 +16,7 @@ public class BillService {
         Bill bill = repository.findByBillNo(billNo).orElseThrow();
         BillStatus status = stateMachine.transition(bill.status(), next);
         return repository.save(new Bill(bill.id(), bill.billNo(), bill.billType(), bill.billPeriod(), bill.periodStart(),
-                bill.periodEnd(), bill.totalAmount(), status, bill.createdAt(), Instant.now()));
+                bill.periodEnd(), bill.totalAmount(), status, bill.createdAt(), Instant.now(), bill.items()));
     }
 
     public Bill confirm(String billNo) {

@@ -1,10 +1,13 @@
 package com.platform.billing;
 
 import com.platform.billing.bill.BillGenerator;
+import com.platform.billing.bill.BillItemRepository;
 import com.platform.billing.bill.BillRepository;
 import com.platform.billing.bill.BillService;
 import com.platform.billing.bill.BillStateMachine;
+import com.platform.billing.bill.InMemoryBillItemRepository;
 import com.platform.billing.bill.InMemoryBillRepository;
+import com.platform.billing.bill.JdbcBillItemRepository;
 import com.platform.billing.bill.JdbcBillRepository;
 import com.platform.billing.dashboard.DashboardService;
 import com.platform.billing.report.ReportGenerator;
@@ -50,10 +53,19 @@ public class BillingApplication {
     }
 
     @Bean
-    BillRepository billRepository(
+    BillItemRepository billItemRepository(
             @Autowired(required = false) JdbcTemplate jdbcTemplate) {
         return jdbcTemplate != null
-                ? new JdbcBillRepository(jdbcTemplate)
+                ? new JdbcBillItemRepository(jdbcTemplate)
+                : new InMemoryBillItemRepository();
+    }
+
+    @Bean
+    BillRepository billRepository(
+            @Autowired(required = false) JdbcTemplate jdbcTemplate,
+            BillItemRepository billItemRepository) {
+        return jdbcTemplate != null
+                ? new JdbcBillRepository(jdbcTemplate, billItemRepository)
                 : new InMemoryBillRepository();
     }
 
@@ -68,8 +80,11 @@ public class BillingApplication {
     }
 
     @Bean
-    BillGenerator billGenerator(BillingRuleEngine ruleEngine, BillRepository billRepository) {
-        return new BillGenerator(ruleEngine, billRepository);
+    BillGenerator billGenerator(BillingRuleEngine ruleEngine, BillRepository billRepository,
+                                BillItemRepository billItemRepository,
+                                @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
+        return new BillGenerator(ruleEngine, billRepository, billItemRepository,
+                () -> invokeLogRepository == null ? List.of() : invokeLogRepository.findAll());
     }
 
     @Bean
@@ -121,10 +136,8 @@ public class BillingApplication {
 
     @Bean
     com.platform.billing.job.BillGeneratorJobHandler billGeneratorJobHandler(
-            BillGenerator billGenerator,
-            @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
-        return new com.platform.billing.job.BillGeneratorJobHandler(billGenerator,
-                () -> invokeLogRepository == null ? List.of() : invokeLogRepository.findAll());
+            BillGenerator billGenerator) {
+        return new com.platform.billing.job.BillGeneratorJobHandler(billGenerator);
     }
 
     @Bean
