@@ -5,23 +5,28 @@ import com.platform.billing.bill.BillRepository;
 import com.platform.billing.bill.BillService;
 import com.platform.billing.bill.BillStateMachine;
 import com.platform.billing.bill.InMemoryBillRepository;
+import com.platform.billing.bill.JdbcBillRepository;
 import com.platform.billing.dashboard.DashboardService;
 import com.platform.billing.report.ReportGenerator;
 import com.platform.billing.rule.BillingRuleEngine;
 import com.platform.billing.rule.BillingRuleRepository;
 import com.platform.billing.rule.InMemoryBillingRuleRepository;
+import com.platform.billing.rule.JdbcBillingRuleRepository;
 import com.platform.billing.stats.AuditTraceService;
 import com.platform.billing.stats.CacheMetricsProvider;
 import com.platform.billing.stats.FixedCacheMetricsProvider;
 import com.platform.billing.stats.InMemoryStatsSnapshotRepository;
+import com.platform.billing.stats.JdbcStatsSnapshotRepository;
 import com.platform.billing.stats.StatsAggregator;
 import com.platform.billing.stats.StatsSnapshotRepository;
 import com.platform.common.audit.AuditLogRepository;
 import com.platform.common.audit.InMemoryAuditLogRepository;
 import java.math.BigDecimal;
 import org.springframework.boot.SpringApplication;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootApplication(scanBasePackages = {"com.platform.billing", "com.platform.common"})
 public class BillingApplication {
@@ -30,8 +35,11 @@ public class BillingApplication {
     }
 
     @Bean
-    BillingRuleRepository billingRuleRepository() {
-        return new InMemoryBillingRuleRepository();
+    BillingRuleRepository billingRuleRepository(
+            @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate != null
+                ? new JdbcBillingRuleRepository(jdbcTemplate)
+                : new InMemoryBillingRuleRepository();
     }
 
     @Bean
@@ -40,8 +48,11 @@ public class BillingApplication {
     }
 
     @Bean
-    BillRepository billRepository() {
-        return new InMemoryBillRepository();
+    BillRepository billRepository(
+            @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate != null
+                ? new JdbcBillRepository(jdbcTemplate)
+                : new InMemoryBillRepository();
     }
 
     @Bean
@@ -60,8 +71,11 @@ public class BillingApplication {
     }
 
     @Bean
-    StatsSnapshotRepository statsSnapshotRepository() {
-        return new InMemoryStatsSnapshotRepository();
+    StatsSnapshotRepository statsSnapshotRepository(
+            @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate != null
+                ? new JdbcStatsSnapshotRepository(jdbcTemplate)
+                : new InMemoryStatsSnapshotRepository();
     }
 
     @Bean
@@ -85,8 +99,11 @@ public class BillingApplication {
     }
 
     @Bean
-    AuditLogRepository auditLogRepository() {
-        return new InMemoryAuditLogRepository();
+    AuditLogRepository auditLogRepository(
+            @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate != null
+                ? new com.platform.common.audit.JdbcAuditLogRepository(jdbcTemplate)
+                : new InMemoryAuditLogRepository();
     }
 
     @Bean

@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import com.platform.common.db.IdGenerator;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 public class IngestService {
     private final AtomicLong ids = new AtomicLong(1);
@@ -20,20 +22,35 @@ public class IngestService {
     private final RawDataRepository repository;
     private final IngestQualityGuard qualityGuard;
     private final IngestTaskStateMachine stateMachine = new IngestTaskStateMachine();
+    private final JdbcTemplate jdbcTemplate;
+    private final IdGenerator idGenerator;
 
     public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository) {
         this(adapter, converter, repository, IngestQualityGuard.disabled());
     }
 
     public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository, IngestQualityGuard qualityGuard) {
+        this(adapter, converter, repository, qualityGuard, null);
+    }
+
+    public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository,
+                         IngestQualityGuard qualityGuard, JdbcTemplate jdbcTemplate) {
         this.adapter = adapter;
         this.converter = converter;
         this.repository = repository;
         this.qualityGuard = qualityGuard;
+        this.jdbcTemplate = jdbcTemplate;
+        this.idGenerator = jdbcTemplate != null ? new IdGenerator(jdbcTemplate) : null;
+    }
+
+    private boolean useDb() {
+        return jdbcTemplate != null;
     }
 
     public IngestTask createTask(long partnerId, URI endpoint) {
-        IngestTask task = new IngestTask(ids.getAndIncrement(), partnerId, endpoint, adapter.protocol(), converter.format());
+        long id = useDb() ? idGenerator.nextId("t_ingest_task") : ids.getAndIncrement();
+        IngestTask task = new IngestTask(id, partnerId, endpoint, adapter.protocol(), converter.format());
+        persistTask(task);
         tasks.put(task.id(), task);
         return task;
     }
@@ -45,11 +62,13 @@ public class IngestService {
         task.cronExpression(cronExpression);
         task.fieldMapping(fieldMapping);
         task.qualityRules(qualityRules);
+        persistTask(task);
         return task;
     }
 
     public List<IngestTask> list(Long partnerId, String status) {
-        return tasks.values().stream()
+        List<IngestTask> source = useDb() ? listTasksFromDb() : List.copyOf(tasks.values());
+        return source.stream()
                 .filter(t -> partnerId == null || partnerId == t.partnerId())
                 .filter(t -> status == null || status.isBlank() || status.equals(t.status().name()))
                 .sorted(Comparator.comparingLong(IngestTask::id))
@@ -63,18 +82,21 @@ public class IngestService {
     public IngestTask updateMapping(long taskId, Map<String, String> fieldMapping) {
         IngestTask task = requireTask(taskId);
         task.fieldMapping(fieldMapping);
+        persistTask(task);
         return task;
     }
 
     public IngestTask updateRules(long taskId, List<String> qualityRules) {
         IngestTask task = requireTask(taskId);
         task.qualityRules(qualityRules);
+        persistTask(task);
         return task;
     }
 
     public IngestTask apply(long taskId, IngestTaskEvent event) {
         IngestTask task = requireTask(taskId);
         task.status(stateMachine.transit(task.status(), event));
+        persistTask(task);
         return task;
     }
 
@@ -115,11 +137,12 @@ public class IngestService {
 
     public IngestTask transition(IngestTask task, IngestTaskEvent event) {
         task.status(stateMachine.transit(task.status(), event));
+        persistTask(task);
         return task;
     }
 
     public IngestTask requireTask(long taskId) {
-        IngestTask task = tasks.get(taskId);
+        IngestTask task = useDb() ? loadTask(taskId) : tasks.get(taskId);
         if (task == null) {
             throw new BusinessException("INGEST-404", "ingest task not found");
         }
@@ -129,5 +152,56 @@ public class IngestService {
     public List<RawDataRecord> records() {
         return repository.findAll();
     }
-}
 
+    private void persistTask(IngestTask task) {
+        if (!useDb()) {
+            return;
+        }
+        int affected = jdbcTemplate.update("""
+                UPDATE t_ingest_task
+                SET sync_mode = ?, schedule_cron = ?, mapping_config = ?, rule_config = ?, status = ?, protocol = ?, format = ?, endpoint = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, task.syncMode(), task.cronExpression(), task.fieldMapping().toString(),
+                String.join(",", task.qualityRules()), task.status().name(),
+                task.protocol(), task.format(), task.endpoint().toString(), task.id());
+        if (affected == 0) {
+            jdbcTemplate.update("""
+                    INSERT INTO t_ingest_task
+                    (id, partner_id, protocol, format, endpoint, sync_mode, schedule_cron, mapping_config, rule_config, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, task.id(), task.partnerId(), task.protocol(), task.format(), task.endpoint().toString(),
+                    task.syncMode(), task.cronExpression(), task.fieldMapping().toString(),
+                    String.join(",", task.qualityRules()), task.status().name());
+        }
+    }
+
+    private List<IngestTask> listTasksFromDb() {
+        return jdbcTemplate.query("SELECT * FROM t_ingest_task ORDER BY id", (rs, rowNum) -> mapTask(
+                rs.getLong("id"), rs.getLong("partner_id"), rs.getString("endpoint"),
+                rs.getString("protocol"), rs.getString("format"), rs.getString("sync_mode"),
+                rs.getString("schedule_cron"), rs.getString("status"),
+                rs.getString("mapping_config"), rs.getString("rule_config")));
+    }
+
+    private IngestTask loadTask(long taskId) {
+        return jdbcTemplate.query("SELECT * FROM t_ingest_task WHERE id = ?", (rs, rowNum) -> mapTask(
+                rs.getLong("id"), rs.getLong("partner_id"), rs.getString("endpoint"),
+                rs.getString("protocol"), rs.getString("format"), rs.getString("sync_mode"),
+                rs.getString("schedule_cron"), rs.getString("status"),
+                rs.getString("mapping_config"), rs.getString("rule_config")), taskId).stream().findFirst().orElse(null);
+    }
+
+    private IngestTask mapTask(long id, long partnerId, String endpoint, String protocol, String format,
+                               String syncMode, String cron, String status,
+                               String mappingConfig, String ruleConfig) {
+        IngestTask task = new IngestTask(id, partnerId, URI.create(endpoint), protocol, format);
+        task.syncMode(syncMode);
+        task.cronExpression(cron);
+        if (ruleConfig != null && !ruleConfig.isBlank()) {
+            task.qualityRules(java.util.Arrays.stream(ruleConfig.split(",")).filter(s -> !s.isBlank()).toList());
+        }
+        task.status(IngestTaskStatus.valueOf(status));
+        return task;
+    }
+
+}

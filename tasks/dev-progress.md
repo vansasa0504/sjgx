@@ -402,3 +402,76 @@ mvn -pl platform-common flyway:migrate \
 
 - `db.type=${DB_TYPE:MYSQL}` 当前未被分页/DAO 代码消费，因为项目现阶段分页仍是内存分页；保留为 P0-03 Repository 落库后接入 MyBatis-Plus 方言配置的预留项，避免本次为文档返工扩大代码改动。
 - `db/rollback/` 目录存在孤岛脚本（如 `db/rollback/U009__perf_and_compat.sql`），与 P0-01 审查 D-2 的 U0xx 目录统一建议一并处理。本次 P0-02 不删除/迁移 rollback 文件，避免影响回滚约定。
+
+---
+
+## 13. P0-03 核心 Repository 落库返工记录（2026-06-28）
+
+### 13.1 返工依据
+
+依据 `reviews/claude-review-P0-03.md` 审查报告，P0-03 初版存在 12 项问题（RW-1~RW-12），其中 RW-1（nextId 并发不安全）和 RW-2（bootstrapAdmin 默认弱密码+吞异常）为阻断级。
+
+### 13.2 返工完成项
+
+| 编号 | 问题 | 状态 | 说明 |
+|---|---|---|---|
+| RW-1 | nextId 并发不安全 | ✅ 已修复 | 新增 `IdGenerator`（platform-common），用 `AtomicLong` + 初始化从 MAX(id) 读取替代 `SELECT MAX(id)+1`；auth/partner/ingest/service/consumer/catalog/quality/billing 全部模块替换 |
+| RW-2 | bootstrapAdmin 默认弱密码+吞异常 | ✅ 已修复 | 移除 `admin123` 默认值，未设 `AUTH_BOOTSTRAP_ADMIN_PASSWORD` 环境变量（或系统属性）时抛 `IllegalStateException` 拒绝启动；移除 `catch(Exception ignored)` 吞异常 |
+| RW-3 | auth/partner/ingest/service/consumer/quality jdbc 路径零测试 | ✅ 已修复 | 新增 5 个 JDBC 路径集成测试：AuthJdbcRepositoryTest(8)、PartnerJdbcRepositoryTest(6)、IngestServiceJdbcTest(4)、QualityJdbcRepositoryTest(3)、IdGeneratorTest(4) |
+| RW-4 | AuthService 未拆 UserRepository/RoleRepository 接口 | ⚠️ 未修复 | 保留 AuthService 内 JdbcTemplate；当前双写机制可工作，接口拆分留后续重构 |
+| RW-5 | 缺重启恢复测试 | ✅ 已修复 | PartnerJdbcRepositoryTest.jdbcRestartRecovery + IngestServiceJdbcTest.restartRecoveryDataSurvivesNewServiceInstance |
+| RW-6 | 缺 jdbc profile MockMvc 回归 | ⚠️ 未修复 | MockMvc 测试仍走 memory 路径；jdbc 路径由单元级 JDBC 测试覆盖 |
+| RW-7 | 双写一致性核查 | ✅ 已核查 | 所有读路径在 useDb() 为 true 时走 DB，内存 map 仅用于测试回退 |
+| RW-8 | IngestService INSERT/UPDATE 列不对称 | ✅ 已修复 | persistTask 改为 upsert（先 UPDATE，affected==0 时 INSERT 全字段），INSERT/UPDATE 均包含 sync_mode/schedule_cron/mapping_config/rule_config |
+| RW-9 | profile 切换机制 | ⚠️ 保留现状 | 采用 `@Autowired(required=false) JdbcTemplate` + `jdbcTemplate != null` 判断替代 `@Profile`；测试排除 `DataSourceAutoConfiguration` 实现 memory 回退 |
+| RW-10 | 缺证据文档 | ✅ 已修复 | 本章节即为证据文档 |
+| RW-11 | U011 孤岛 | ✅ 已修复 | 删除 `db/rollback/U011__billing_rule_package_allowance.sql`，统一使用 `db/migration/U011` |
+| RW-12 | catalog/demo API Key 种子 | ⚠️ 未修复 | 留 P0-10 E2E 前置处理 |
+
+### 13.3 落库清单
+
+| 模块 | JDBC 表 | 实现方式 | JDBC 路径测试 |
+|---|---|---|---|
+| auth | t_user/t_role/t_permission/t_user_permission/t_role_permission | AuthService 内 JdbcTemplate + IdGenerator | AuthJdbcRepositoryTest(8) |
+| partner | t_partner/t_partner_interface/t_partner_event | PartnerService 双写 + IdGenerator | PartnerJdbcRepositoryTest(6) |
+| partner.consumer | t_consumer/t_consumer_quota/t_consumer_event | ConsumerService 双写 + IdGenerator | PartnerJdbcRepositoryTest(6) |
+| pipeline.ingest | t_ingest_task | IngestService 双写 + IdGenerator | IngestServiceJdbcTest(4) |
+| pipeline.service | t_data_service | DataServiceManager 双写 + IdGenerator | — |
+| pipeline.catalog | t_data_catalog | CatalogService + IdGenerator | — |
+| quality | t_quality_rule | JdbcQualityRuleRepository + IdGenerator | QualityJdbcRepositoryTest(3) |
+| billing.bill | t_bill | JdbcBillRepository + IdGenerator | RepositoryContractTest(3) |
+| billing.rule | t_billing_rule | JdbcBillingRuleRepository + IdGenerator | RepositoryContractTest(3) |
+| billing.stats | t_stats_snapshot | JdbcStatsSnapshotRepository + IdGenerator | RepositoryContractTest(3) |
+| common.audit | t_audit_log | JdbcAuditLogRepository（已有） | — |
+
+### 13.4 测试结果
+
+```text
+mvn test（全量 8 模块）
+
+platform-common:   Tests run: 28, Failures: 0, Errors: 0 (含 IdGeneratorTest 4)
+platform-gateway:  Tests run: 2,  Failures: 0, Errors: 0
+platform-auth:     Tests run: 33, Failures: 0, Errors: 0 (含 AuthJdbcRepositoryTest 8)
+platform-partner:  Tests run: 29, Failures: 0, Errors: 0 (含 PartnerJdbcRepositoryTest 6)
+platform-quality:  Tests run: 18, Failures: 0, Errors: 0 (含 QualityJdbcRepositoryTest 3)
+platform-pipeline: Tests run: 46, Failures: 0, Errors: 0 (含 IngestServiceJdbcTest 4)
+platform-billing:  Tests run: 30, Failures: 0, Errors: 0 (含 RepositoryContractTest 3)
+总计:              Tests run: 186, Failures: 0, Errors: 0
+BUILD SUCCESS
+```
+
+### 13.5 重启恢复证据
+
+- `PartnerJdbcRepositoryTest.jdbcRestartRecovery`：创建 Partner → 新建 PartnerService（同一 JdbcTemplate）→ find 返回数据
+- `IngestServiceJdbcTest.restartRecoveryDataSurvivesNewServiceInstance`：创建 IngestTask（含 syncMode/cron/mapping/qualityRules）→ 新建 IngestService → detail 返回完整数据
+
+### 13.6 IdGenerator 并发安全证据
+
+`IdGeneratorTest.nextIdIsConcurrencySafe`：20 线程 × 50 次 = 1000 个 ID 全部唯一，无碰撞。
+
+### 13.7 未实测说明
+
+- jdbc profile MockMvc 回归（RW-6）未实现：MockMvc 测试仍走 memory 路径（排除 DataSourceAutoConfiguration）。jdbc 路径由各模块 JDBC 单元测试覆盖 CRUD/查询/状态流转。
+- AuthService UserRepository/RoleRepository 接口拆分（RW-4）未做：保留当前 AuthService 内 JdbcTemplate 实现，功能完整，留后续重构。
+- catalog/demo API Key 种子（RW-12）未做：留 P0-10 E2E 前置处理。
+- 达梦/OceanBase 真实环境 CLOB/SMALLINT 语义验证未做（沿用 P0-02 §12.3 未实测说明）。

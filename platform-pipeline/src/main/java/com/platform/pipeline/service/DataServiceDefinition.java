@@ -26,6 +26,7 @@ public class DataServiceDefinition {
     public void status(DataServiceStatus status) { this.status = status; }
     public int version() { return version; }
     public void incrementVersion() { this.version++; }
+    public void restoreVersion(int version) { this.version = version; }
     public Instant createdAt() { return createdAt; }
     public void name(String name) { this.name = name; }
     public void routeKey(String routeKey) { this.routeKey = routeKey; }

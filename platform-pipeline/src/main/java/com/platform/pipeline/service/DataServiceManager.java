@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import com.platform.common.db.IdGenerator;
 
 public class DataServiceManager {
     private final AtomicLong ids = new AtomicLong(1);
@@ -23,23 +24,58 @@ public class DataServiceManager {
     private final CircuitBreaker circuitBreaker = new CircuitBreaker();
     private final SignatureUtil signatureUtil = new SignatureUtil(Clock.systemUTC());
     private final ApiCredentialRepository apiCredentialRepository;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final IdGenerator idGenerator;
 
     public DataServiceManager() {
-        this(new ApiCredentialRepository());
+        this(new ApiCredentialRepository(), null);
     }
 
     public DataServiceManager(ApiCredentialRepository apiCredentialRepository) {
+        this(apiCredentialRepository, null);
+    }
+
+    public DataServiceManager(ApiCredentialRepository apiCredentialRepository,
+                              org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         this.apiCredentialRepository = apiCredentialRepository;
+        this.jdbcTemplate = jdbcTemplate;
+        this.idGenerator = jdbcTemplate != null ? new IdGenerator(jdbcTemplate) : null;
+    }
+
+
+    private boolean useDb() {
+        return jdbcTemplate != null;
     }
 
     public DataServiceDefinition register(String serviceCode, String name, String routeKey) {
-        DataServiceDefinition definition = new DataServiceDefinition(ids.getAndIncrement(), serviceCode, name, routeKey);
+        long id = useDb() ? idGenerator.nextId("t_data_service") : ids.getAndIncrement();
+        DataServiceDefinition definition = new DataServiceDefinition(id, serviceCode, name, routeKey);
+        if (useDb()) {
+            jdbcTemplate.update(
+                    "INSERT INTO t_data_service (id, service_code, name, route_key, version_no, status, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    id, serviceCode, name, routeKey, definition.version(), definition.status().name());
+        }
         services.put(serviceCode, definition);
         routeData.putIfAbsent(routeKey, "{\"status\":\"ok\"}");
         return definition;
     }
 
+
+
     public List<DataServiceDefinition> list(String keyword, String status) {
+        if (useDb()) {
+            return jdbcTemplate.query(
+                    "SELECT id, service_code, name, route_key, version_no, status FROM t_data_service ORDER BY id",
+                    (rs, rowNum) -> new DataServiceDefinition(
+                            rs.getLong("id"), rs.getString("service_code"), rs.getString("name"),
+                            rs.getString("route_key"))).stream()
+                    
+                    .filter(d -> keyword == null || keyword.isBlank()
+                            || (d.serviceCode() != null && d.serviceCode().contains(keyword))
+                            || (d.name() != null && d.name().contains(keyword)))
+                    .filter(d -> status == null || status.isBlank() || status.equals(d.status().name()))
+                    .toList();
+        }
         return services.values().stream()
                 .filter(d -> keyword == null || keyword.isBlank()
                         || (d.serviceCode() != null && d.serviceCode().contains(keyword))
@@ -60,6 +96,10 @@ public class DataServiceManager {
         if (routeKey != null) {
             definition.routeKey(routeKey);
             routeData.putIfAbsent(routeKey, "{\"status\":\"ok\"}");
+        }
+        if (useDb()) {
+            jdbcTemplate.update("UPDATE t_data_service SET name = ?, route_key = ?, updated_at = CURRENT_TIMESTAMP WHERE service_code = ?",
+                    definition.name(), definition.routeKey(), serviceCode);
         }
         return definition;
     }
@@ -82,6 +122,10 @@ public class DataServiceManager {
         definition.status(stateMachine.transit(definition.status(), event));
         if (event == DataServiceEvent.VERSION) {
             definition.incrementVersion();
+        }
+        if (useDb()) {
+            jdbcTemplate.update("UPDATE t_data_service SET status = ?, version_no = ?, updated_at = CURRENT_TIMESTAMP WHERE service_code = ?",
+                    definition.status().name(), definition.version(), serviceCode);
         }
         return definition;
     }
@@ -119,6 +163,27 @@ public class DataServiceManager {
 
     private DataServiceDefinition require(String serviceCode) {
         DataServiceDefinition definition = services.get(serviceCode);
+        if (definition == null && useDb()) {
+            try {
+                definition = jdbcTemplate.queryForObject(
+                        "SELECT id, service_code, name, route_key, version_no, status FROM t_data_service WHERE service_code = ?",
+                        (rs, rowNum) -> {
+                            DataServiceDefinition d = new DataServiceDefinition(
+                                    rs.getLong("id"), rs.getString("service_code"), rs.getString("name"),
+                                    rs.getString("route_key"));
+                            d.restoreVersion(rs.getInt("version_no"));
+                            d.status(DataServiceStatus.valueOf(rs.getString("status")));
+                            return d;
+                        },
+                        serviceCode);
+                if (definition != null) {
+                    services.put(serviceCode, definition);
+                    routeData.putIfAbsent(definition.routeKey(), "{\"status\":\"ok\"}");
+                }
+            } catch (Exception ex) {
+                // fall through
+            }
+        }
         if (definition == null) {
             throw new BusinessException("SERVICE-404", "service not found");
         }

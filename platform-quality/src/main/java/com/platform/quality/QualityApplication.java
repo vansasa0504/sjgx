@@ -3,12 +3,15 @@ package com.platform.quality;
 import com.platform.quality.executor.QualityCheckExecutor;
 import com.platform.quality.issue.QualityIssueService;
 import com.platform.quality.rule.InMemoryQualityRuleRepository;
+import com.platform.quality.rule.JdbcQualityRuleRepository;
 import com.platform.quality.rule.QualityRuleRepository;
 import com.platform.quality.scoring.QualityScoringService;
 import com.platform.quality.scoring.QualityWeightRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootApplication(scanBasePackages = {"com.platform.quality", "com.platform.common"})
 public class QualityApplication {
@@ -17,8 +20,10 @@ public class QualityApplication {
     }
 
     @Bean
-    QualityRuleRepository qualityRuleRepository() {
-        return new InMemoryQualityRuleRepository();
+    QualityRuleRepository qualityRuleRepository(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate != null
+                ? new JdbcQualityRuleRepository(jdbcTemplate)
+                : new InMemoryQualityRuleRepository();
     }
 
     @Bean

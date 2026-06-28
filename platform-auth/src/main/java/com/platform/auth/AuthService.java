@@ -3,6 +3,7 @@ package com.platform.auth;
 import com.platform.common.audit.AuditLogger;
 import com.platform.common.auth.AuthPrincipal;
 import com.platform.common.auth.JwtUtil;
+import com.platform.common.db.IdGenerator;
 import com.platform.common.exception.BusinessException;
 import com.platform.common.security.PermissionCodes;
 import java.time.Clock;
@@ -24,6 +25,7 @@ public class AuthService {
 
     private final JwtUtil jwtUtil;
     private final JdbcTemplate jdbcTemplate;
+    private final IdGenerator idGenerator;
     private final Map<String, UserAccount> fallbackUsers = new ConcurrentHashMap<>();
     private final Map<String, Role> fallbackRoles = new ConcurrentHashMap<>();
 
@@ -38,9 +40,12 @@ public class AuthService {
     public AuthService(JwtUtil jwtUtil, JdbcTemplate jdbcTemplate) {
         this.jwtUtil = jwtUtil;
         this.jdbcTemplate = jdbcTemplate;
+        this.idGenerator = jdbcTemplate != null ? new IdGenerator(jdbcTemplate) : null;
         if (jdbcTemplate == null) {
             fallbackUsers.put("admin", new UserAccount("admin",
                     PASSWORD_ENCODER.encode("admin123"), new HashSet<>(PermissionCodes.ALL)));
+        } else {
+            bootstrapAdmin();
         }
     }
 
@@ -79,7 +84,7 @@ public class AuthService {
 
     public List<UserAccount> listUsers() {
         if (useDb()) {
-            return jdbcTemplate.queryForList("SELECT id, username FROM t_user", Long.class).isEmpty()
+            return jdbcTemplate.queryForList("SELECT id FROM t_user", Long.class).isEmpty()
                     ? List.of() : listUsersFromDb();
         }
         return List.copyOf(fallbackUsers.values());
@@ -95,9 +100,12 @@ public class AuthService {
             if (findUser(username) != null) {
                 throw new BusinessException("USER-409", "username already exists");
             }
-            jdbcTemplate.update("INSERT INTO t_user (username, password_hash) VALUES (?, ?)",
-                    username, PASSWORD_ENCODER.encode(password));
-            Long userId = jdbcTemplate.queryForObject("SELECT id FROM t_user WHERE username = ?", Long.class, username);
+            long userId = idGenerator.nextId("t_user");
+            jdbcTemplate.update("""
+                            INSERT INTO t_user (id, username, password_hash, status, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            """,
+                    userId, username, PASSWORD_ENCODER.encode(password), "ACTIVE");
             savePermissions(userId, permissions);
             return new UserAccount(username, null, permissions);
         }
@@ -131,13 +139,14 @@ public class AuthService {
     public Role createRole(String name, Set<String> permissions) {
         if (useDb()) {
             try {
-                jdbcTemplate.update("INSERT INTO t_role (name) VALUES (?)", name);
+                long roleId = idGenerator.nextId("t_role");
+                jdbcTemplate.update("INSERT INTO t_role (id, code, name, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                        roleId, name, name);
+                saveRolePermissions(roleId, permissions);
+                return new Role(name, permissions);
             } catch (Exception ex) {
                 throw new BusinessException("ROLE-409", "role already exists");
             }
-            Long roleId = jdbcTemplate.queryForObject("SELECT id FROM t_role WHERE name = ?", Long.class, name);
-            saveRolePermissions(roleId, permissions);
-            return new Role(name, permissions);
         }
         if (fallbackRoles.containsKey(name)) {
             throw new BusinessException("ROLE-409", "role already exists");
@@ -215,13 +224,44 @@ public class AuthService {
 
     private void savePermissions(Long userId, Set<String> permissions) {
         for (String perm : permissions) {
-            jdbcTemplate.update("INSERT IGNORE INTO t_user_permission (user_id, permission_code) VALUES (?, ?)", userId, perm);
+            if (!exists("SELECT COUNT(*) FROM t_user_permission WHERE user_id = ? AND permission_code = ?", userId, perm)) {
+                jdbcTemplate.update("INSERT INTO t_user_permission (id, user_id, permission_code) VALUES (?, ?, ?)",
+                        idGenerator.nextId("t_user_permission"), userId, perm);
+            }
         }
     }
 
     private void saveRolePermissions(Long roleId, Set<String> permissions) {
         for (String perm : permissions) {
-            jdbcTemplate.update("INSERT IGNORE INTO t_role_permission (role_id, permission_code) VALUES (?, ?)", roleId, perm);
+            if (!exists("SELECT COUNT(*) FROM t_role_permission WHERE role_id = ? AND permission_code = ?", roleId, perm)) {
+                jdbcTemplate.update("INSERT INTO t_role_permission (id, role_id, permission_code) VALUES (?, ?, ?)",
+                        idGenerator.nextId("t_role_permission"), roleId, perm);
+            }
         }
+    }
+
+    private void bootstrapAdmin() {
+        for (String permission : PermissionCodes.ALL) {
+            if (!exists("SELECT COUNT(*) FROM t_permission WHERE code = ?", permission)) {
+                jdbcTemplate.update("INSERT INTO t_permission (id, code, name) VALUES (?, ?, ?)",
+                        idGenerator.nextId("t_permission"), permission, permission);
+            }
+        }
+        if (findUser("admin") == null) {
+            String password = System.getenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD");
+            if (password == null || password.isBlank()) {
+                password = System.getProperty("AUTH_BOOTSTRAP_ADMIN_PASSWORD");
+            }
+            if (password == null || password.isBlank()) {
+                throw new IllegalStateException(
+                        "AUTH_BOOTSTRAP_ADMIN_PASSWORD environment variable must be set to bootstrap the admin user");
+            }
+            createUser("admin", password, new HashSet<>(PermissionCodes.ALL));
+        }
+    }
+
+    private boolean exists(String sql, Object... args) {
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, args);
+        return count != null && count > 0;
     }
 }
