@@ -10,6 +10,8 @@ import com.platform.billing.bill.BillRepository;
 import com.platform.billing.model.BillPeriod;
 import com.platform.billing.model.BillStatus;
 import com.platform.billing.model.BillType;
+import com.platform.billing.finance.FinanceSystemAdapter;
+import com.platform.billing.finance.FinanceSyncResult;
 import com.platform.billing.regulatory.RegulatorySubmitResult;
 import com.platform.billing.report.InMemoryRegulatoryReportRepository;
 import com.platform.billing.report.RegulatoryReportRepository;
@@ -44,6 +46,7 @@ class BillingModuleMockMvcTest {
     @Autowired BillRepository billRepository;
     @Autowired BillItemRepository billItemRepository;
     @Autowired RegulatoryReportRepository regulatoryReportRepository;
+    @Autowired TestFinanceSystemAdapter testFinanceSystemAdapter;
 
     private String adminToken() {
         return jwtUtil.issue("admin", Set.copyOf(PermissionCodes.ALL), 3600);
@@ -295,6 +298,73 @@ class BillingModuleMockMvcTest {
                 .andExpect(jsonPath("$.code").value("REGULATORY-404"));
     }
 
+    @Test
+    void financeSyncFailureRetrySuccessPurchaseAndQuery() throws Exception {
+        billRepository.save(new Bill(null, "BILL-SYNC-MVC", BillType.EXPENSE, BillPeriod.MONTHLY,
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), BigDecimal.TEN,
+                BillStatus.CONFIRMED, Instant.now(), Instant.now()));
+        testFinanceSystemAdapter.success = false;
+
+        mockMvc.perform(post("/api/v1/billing/bills/BILL-SYNC-MVC/sync")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FAILED"))
+                .andExpect(jsonPath("$.data.retryCount").value(0))
+                .andExpect(jsonPath("$.data.message").value("mock finance rejected"));
+
+        testFinanceSystemAdapter.success = true;
+        mockMvc.perform(post("/api/v1/billing/bills/BILL-SYNC-MVC/sync/retry")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.retryCount").value(1))
+                .andExpect(jsonPath("$.data.externalNo").value("FIN-BILL-SYNC-MVC"));
+
+        mockMvc.perform(post("/api/v1/billing/bills/BILL-SYNC-MVC/sync")
+                .param("adapterType", "PURCHASE")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.externalNo").value("PUR-BILL-SYNC-MVC"));
+
+        mockMvc.perform(get("/api/v1/billing/bills/BILL-SYNC-MVC/sync")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(3));
+    }
+
+    @Test
+    void financeSyncAuthStateMissingAndRetryPrecondition() throws Exception {
+        billRepository.save(new Bill(null, "BILL-GEN-MVC", BillType.EXPENSE, BillPeriod.MONTHLY,
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), BigDecimal.TEN,
+                BillStatus.GENERATED, Instant.now(), Instant.now()));
+        billRepository.save(new Bill(null, "BILL-NOFAIL-MVC", BillType.EXPENSE, BillPeriod.MONTHLY,
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), BigDecimal.TEN,
+                BillStatus.CONFIRMED, Instant.now(), Instant.now()));
+
+        mockMvc.perform(post("/api/v1/billing/bills/BILL-NOFAIL-MVC/sync"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/billing/bills/BILL-NOFAIL-MVC/sync")
+                .header("Authorization", "Bearer " + viewerToken()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/billing/bills/BILL-GEN-MVC/sync")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BILL_STATE_INVALID"));
+
+        mockMvc.perform(post("/api/v1/billing/bills/MISSING/sync")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("BILL-404"));
+
+        mockMvc.perform(post("/api/v1/billing/bills/BILL-NOFAIL-MVC/sync/retry")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("FINANCE_SYNC-409"));
+    }
+
     @TestConfiguration
     static class RegulatoryReportTestConfig {
         @Bean
@@ -312,10 +382,27 @@ class BillingModuleMockMvcTest {
                     auditLogRepository);
         }
 
+        @Bean
+        @Primary
+        TestFinanceSystemAdapter testFinanceSystemAdapter() {
+            return new TestFinanceSystemAdapter();
+        }
+
         private static List<ServiceInvokeLog> logs() {
             return List.of(new ServiceInvokeLog("trace-abcdef-0001", "svc-report", "CONSUMER-SECRET",
                     "partner-report", "api-key-secret", "hash", 200, 12L, 128L, null, null,
                     Instant.parse("2026-06-10T00:00:00Z")));
+        }
+    }
+
+    static class TestFinanceSystemAdapter implements FinanceSystemAdapter {
+        private boolean success = true;
+
+        @Override
+        public FinanceSyncResult sync(Bill bill) {
+            return success
+                    ? new FinanceSyncResult(true, "FIN-" + bill.billNo(), "mock finance synced")
+                    : new FinanceSyncResult(false, null, "mock finance rejected");
         }
     }
 }

@@ -6,6 +6,8 @@ import com.platform.billing.bill.BillItem;
 import com.platform.billing.bill.BillItemRepository;
 import com.platform.billing.bill.BillRepository;
 import com.platform.billing.bill.BillService;
+import com.platform.billing.finance.FinanceSyncRecord;
+import com.platform.billing.finance.FinanceSyncService;
 import com.platform.billing.model.BillPeriod;
 import com.platform.billing.model.BillType;
 import com.platform.billing.model.TargetType;
@@ -38,15 +40,17 @@ public class BillingController {
     private final BillRepository billRepository;
     private final BillItemRepository billItemRepository;
     private final BillService billService;
+    private final FinanceSyncService financeSyncService;
 
     public BillingController(BillingRuleRepository ruleRepository, BillGenerator billGenerator,
                              BillRepository billRepository, BillItemRepository billItemRepository,
-                             BillService billService) {
+                             BillService billService, FinanceSyncService financeSyncService) {
         this.ruleRepository = ruleRepository;
         this.billGenerator = billGenerator;
         this.billRepository = billRepository;
         this.billItemRepository = billItemRepository;
         this.billService = billService;
+        this.financeSyncService = financeSyncService;
     }
 
     @GetMapping("/rules")
@@ -109,6 +113,26 @@ public class BillingController {
     @RequirePermission("billing:approve")
     public ResponseEntity<Result<Bill>> adjust(@PathVariable String billNo) {
         return statusChange(() -> billService.adjust(billNo));
+    }
+
+    @PostMapping("/bills/{billNo}/sync")
+    @RequirePermission("billing:run")
+    public Result<FinanceSyncRecord> syncBill(@PathVariable String billNo,
+                                              @RequestParam(required = false) String adapterType) {
+        return Result.ok(financeSyncService.sync(billNo, adapterType));
+    }
+
+    @PostMapping("/bills/{billNo}/sync/retry")
+    @RequirePermission("billing:run")
+    public Result<FinanceSyncRecord> retryBillSync(@PathVariable String billNo,
+                                                   @RequestParam(required = false) String adapterType) {
+        return Result.ok(financeSyncService.retry(billNo, adapterType));
+    }
+
+    @GetMapping("/bills/{billNo}/sync")
+    @RequirePermission("billing:view")
+    public Result<List<FinanceSyncRecord>> billSyncRecords(@PathVariable String billNo) {
+        return Result.ok(financeSyncService.list(billNo));
     }
 
     @GetMapping("/stats")

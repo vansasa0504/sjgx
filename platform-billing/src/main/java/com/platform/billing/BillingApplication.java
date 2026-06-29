@@ -10,6 +10,14 @@ import com.platform.billing.bill.InMemoryBillRepository;
 import com.platform.billing.bill.JdbcBillItemRepository;
 import com.platform.billing.bill.JdbcBillRepository;
 import com.platform.billing.dashboard.DashboardService;
+import com.platform.billing.finance.FinanceSyncRepository;
+import com.platform.billing.finance.FinanceSyncService;
+import com.platform.billing.finance.FinanceSystemAdapter;
+import com.platform.billing.finance.InMemoryFinanceSyncRepository;
+import com.platform.billing.finance.JdbcFinanceSyncRepository;
+import com.platform.billing.finance.MockFinanceSystemAdapter;
+import com.platform.billing.finance.MockPurchaseContractAdapter;
+import com.platform.billing.finance.PurchaseContractAdapter;
 import com.platform.billing.regulatory.MockRegulatoryReportingAdapter;
 import com.platform.billing.regulatory.RegulatoryReportingAdapter;
 import com.platform.billing.report.ReportGenerator;
@@ -151,6 +159,34 @@ public class BillingApplication {
     @Bean
     AuditTraceService auditTraceService(AuditLogRepository auditLogRepository) {
         return new AuditTraceService(auditLogRepository);
+    }
+
+    @Bean
+    FinanceSystemAdapter financeSystemAdapter() {
+        return new MockFinanceSystemAdapter();
+    }
+
+    @Bean
+    PurchaseContractAdapter purchaseContractAdapter() {
+        return new MockPurchaseContractAdapter();
+    }
+
+    @Bean
+    FinanceSyncRepository financeSyncRepository(
+            @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate != null
+                ? new JdbcFinanceSyncRepository(jdbcTemplate)
+                : new InMemoryFinanceSyncRepository();
+    }
+
+    @Bean
+    FinanceSyncService financeSyncService(BillRepository billRepository,
+                                          FinanceSyncRepository financeSyncRepository,
+                                          FinanceSystemAdapter financeSystemAdapter,
+                                          PurchaseContractAdapter purchaseContractAdapter,
+                                          AuditLogRepository auditLogRepository) {
+        return new FinanceSyncService(billRepository, financeSyncRepository, financeSystemAdapter,
+                purchaseContractAdapter, auditLogRepository);
     }
 
     @Bean

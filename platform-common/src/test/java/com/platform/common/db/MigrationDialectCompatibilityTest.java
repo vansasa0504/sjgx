@@ -133,6 +133,11 @@ class MigrationDialectCompatibilityTest {
                  generated_at, submitted_at)
                 VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, 1L, "COMPLIANCE", "{\"reportType\":\"COMPLIANCE\"}", "SUBMITTED", "REG-COMPLIANCE", "ok");
+        jdbcTemplate.update("""
+                INSERT INTO t_finance_sync_record
+                (id, bill_no, adapter_type, external_no, status, retry_count, message, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, 1L, "BILL-A", "FINANCE", "FIN-BILL-A", "SUCCESS", 0, "ok");
 
         Map<String, Object> invokeLog = jdbcTemplate.queryForMap("""
                 SELECT service_code, consumer_code, status_code, response_size
@@ -169,6 +174,12 @@ class MigrationDialectCompatibilityTest {
         assertEquals("REG-COMPLIANCE", jdbcTemplate.queryForObject(
                 "SELECT receipt_no FROM t_regulatory_report WHERE id = ?",
                 String.class, 1L));
+        assertEquals("FIN-BILL-A", jdbcTemplate.queryForObject(
+                "SELECT external_no FROM t_finance_sync_record WHERE id = ?",
+                String.class, 1L));
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT retry_count FROM t_finance_sync_record WHERE id = ?",
+                Integer.class, 1L));
         assertEquals("abc123", jdbcTemplate.queryForObject("SELECT hash FROM t_audit_log WHERE id = ?", String.class, 1L));
     }
 

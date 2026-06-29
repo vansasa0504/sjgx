@@ -8,12 +8,16 @@ import com.platform.billing.bill.BillService;
 import com.platform.billing.bill.BillStateMachine;
 import com.platform.billing.bill.InMemoryBillItemRepository;
 import com.platform.billing.bill.InMemoryBillRepository;
+import com.platform.billing.finance.FinanceSyncResult;
+import com.platform.billing.finance.FinanceSyncService;
+import com.platform.billing.finance.InMemoryFinanceSyncRepository;
 import com.platform.billing.model.BillPeriod;
 import com.platform.billing.model.BillType;
 import com.platform.billing.model.BillingModel;
 import com.platform.billing.model.TargetType;
 import com.platform.billing.rule.BillingRuleEngine;
 import com.platform.billing.rule.InMemoryBillingRuleRepository;
+import com.platform.common.audit.InMemoryAuditLogRepository;
 import com.platform.common.log.JdbcServiceInvokeLogRepository;
 import com.platform.common.model.ServiceInvokeLog;
 import java.math.BigDecimal;
@@ -32,7 +36,8 @@ class BillingControllerTest {
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
         var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, java.util.List::of);
         var billService = new BillService(billRepository, new BillStateMachine());
-        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billItemRepository, billService);
+        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository,
+                billItemRepository, billService, financeSyncService(billRepository));
 
         var rule = controller.createRule(new BillingController.CreateRuleRequest(
                 "count-c1", "count-c1", BillingModel.BY_COUNT, TargetType.CONSUMER, 1L,
@@ -58,7 +63,8 @@ class BillingControllerTest {
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
         var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, invokeLogRepository::findAll);
         var billService = new BillService(billRepository, new BillStateMachine());
-        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billItemRepository, billService);
+        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository,
+                billItemRepository, billService, financeSyncService(billRepository));
 
         var bill = controller.generate(new BillingController.GenerateBillRequest(
                 BillType.EXPENSE, BillPeriod.DAILY, LocalDate.now(), LocalDate.now())).data();
@@ -95,6 +101,14 @@ class BillingControllerTest {
         dataSource.setUser("sa");
         return dataSource;
     }
+
+    private FinanceSyncService financeSyncService(InMemoryBillRepository billRepository) {
+        return new FinanceSyncService(billRepository, new InMemoryFinanceSyncRepository(),
+                bill -> new FinanceSyncResult(true, "FIN-" + bill.billNo(), "ok"),
+                bill -> new FinanceSyncResult(true, "PUR-" + bill.billNo(), "ok"),
+                new InMemoryAuditLogRepository());
+    }
+
     @Test
     void aggregationMatchesMultipleInvokes() {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource());
@@ -113,7 +127,8 @@ class BillingControllerTest {
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
         var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, invokeLogRepository::findAll);
         var billService = new BillService(billRepository, new BillStateMachine());
-        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository, billItemRepository, billService);
+        BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository,
+                billItemRepository, billService, financeSyncService(billRepository));
 
         var bill = controller.generate(new BillingController.GenerateBillRequest(
                 BillType.EXPENSE, BillPeriod.DAILY, LocalDate.now(), LocalDate.now())).data();
