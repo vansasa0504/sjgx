@@ -51,6 +51,13 @@ public class InMemoryCatalogApplicationRepository implements CatalogApplicationR
                         && CatalogApplication.APPROVED.equals(application.status()));
     }
 
+    @Override
+    public long countByCatalog(long catalogId) {
+        return applications.values().stream()
+                .filter(application -> application.catalogId() == catalogId)
+                .count();
+    }
+
     private CatalogApplication transit(long id, String approver, String targetStatus) {
         return applications.compute(id, (key, current) -> {
             if (current == null) {

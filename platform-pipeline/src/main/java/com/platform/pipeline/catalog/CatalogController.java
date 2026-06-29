@@ -31,20 +31,36 @@ public class CatalogController {
     private final CatalogApplicationRepository applicationRepository;
     private final AuditLogRepository auditLogRepository;
     private final DataServiceManager dataServiceManager;
+    private final CatalogGovernanceService governanceService;
 
     public CatalogController(CatalogService catalogService) {
         this(catalogService, new InMemoryCatalogApplicationRepository(), null, null);
+    }
+
+    public CatalogController(CatalogService catalogService,
+                             CatalogApplicationRepository applicationRepository,
+                             AuditLogRepository auditLogRepository,
+                             DataServiceManager dataServiceManager) {
+        CatalogLineageRepository lineages = new InMemoryCatalogLineageRepository();
+        CatalogQualitySummaryRepository quality = new InMemoryCatalogQualitySummaryRepository();
+        this.catalogService = catalogService;
+        this.applicationRepository = applicationRepository;
+        this.auditLogRepository = auditLogRepository;
+        this.dataServiceManager = dataServiceManager;
+        this.governanceService = new CatalogGovernanceService(catalogService, lineages, quality, applicationRepository, null);
     }
 
     @Autowired
     public CatalogController(CatalogService catalogService,
                              CatalogApplicationRepository applicationRepository,
                              AuditLogRepository auditLogRepository,
-                             DataServiceManager dataServiceManager) {
+                             DataServiceManager dataServiceManager,
+                             CatalogGovernanceService governanceService) {
         this.catalogService = catalogService;
         this.applicationRepository = applicationRepository;
         this.auditLogRepository = auditLogRepository;
         this.dataServiceManager = dataServiceManager;
+        this.governanceService = governanceService;
     }
 
     @GetMapping
@@ -66,6 +82,34 @@ public class CatalogController {
     @RequirePermission("catalog:view")
     public Result<DataCatalogItem> meta(@PathVariable long id) {
         return Result.ok(requireItem(id));
+    }
+
+    @GetMapping("/{id}/lineage")
+    @RequirePermission("catalog:view")
+    public Result<List<CatalogLineage>> lineage(@PathVariable long id) {
+        requireItem(id);
+        return Result.ok(governanceService.lineage(id));
+    }
+
+    @GetMapping("/{id}/quality-summary")
+    @RequirePermission("catalog:view")
+    public Result<CatalogQualitySummary> qualitySummary(@PathVariable long id) {
+        requireItem(id);
+        return Result.ok(governanceService.qualitySummary(id));
+    }
+
+    @GetMapping("/{id}/usage-summary")
+    @RequirePermission("catalog:view")
+    public Result<CatalogUsageSummary> usageSummary(@PathVariable long id) {
+        requireItem(id);
+        return Result.ok(governanceService.usageSummary(id));
+    }
+
+    @GetMapping("/{id}/detail")
+    @RequirePermission("catalog:view")
+    public Result<CatalogDetail> detail(@PathVariable long id) {
+        requireItem(id);
+        return Result.ok(governanceService.detail(id));
     }
 
     @GetMapping("/{id}/preview")

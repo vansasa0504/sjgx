@@ -4,8 +4,15 @@ import com.platform.common.audit.AuditLogRepository;
 import com.platform.common.audit.InMemoryAuditLogRepository;
 import com.platform.common.audit.JdbcAuditLogRepository;
 import com.platform.pipeline.catalog.CatalogApplicationRepository;
+import com.platform.pipeline.catalog.CatalogGovernanceService;
+import com.platform.pipeline.catalog.CatalogLineageRepository;
+import com.platform.pipeline.catalog.CatalogQualitySummaryRepository;
 import com.platform.pipeline.catalog.InMemoryCatalogApplicationRepository;
+import com.platform.pipeline.catalog.InMemoryCatalogLineageRepository;
+import com.platform.pipeline.catalog.InMemoryCatalogQualitySummaryRepository;
 import com.platform.pipeline.catalog.JdbcCatalogApplicationRepository;
+import com.platform.pipeline.catalog.JdbcCatalogLineageRepository;
+import com.platform.pipeline.catalog.JdbcCatalogQualitySummaryRepository;
 import com.platform.pipeline.catalog.CatalogService;
 import com.platform.pipeline.ingest.adapter.MqAdapter;
 import com.platform.pipeline.ingest.adapter.ApiGatewayAdapter;
@@ -151,8 +158,10 @@ public class PipelineApplication {
     }
 
     @Bean
-    CatalogService catalogService(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
-        return new CatalogService(jdbcTemplate);
+    CatalogService catalogService(@Autowired(required = false) JdbcTemplate jdbcTemplate,
+                                  CatalogLineageRepository lineageRepository,
+                                  CatalogQualitySummaryRepository qualitySummaryRepository) {
+        return new CatalogService(jdbcTemplate, lineageRepository, qualitySummaryRepository);
     }
 
     @Bean
@@ -160,6 +169,30 @@ public class PipelineApplication {
         return jdbcTemplate == null
                 ? new InMemoryCatalogApplicationRepository()
                 : new JdbcCatalogApplicationRepository(jdbcTemplate);
+    }
+
+    @Bean
+    CatalogLineageRepository catalogLineageRepository(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate == null
+                ? new InMemoryCatalogLineageRepository()
+                : new JdbcCatalogLineageRepository(jdbcTemplate);
+    }
+
+    @Bean
+    CatalogQualitySummaryRepository catalogQualitySummaryRepository(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate == null
+                ? new InMemoryCatalogQualitySummaryRepository()
+                : new JdbcCatalogQualitySummaryRepository(jdbcTemplate);
+    }
+
+    @Bean
+    CatalogGovernanceService catalogGovernanceService(CatalogService catalogService,
+                                                      CatalogLineageRepository lineageRepository,
+                                                      CatalogQualitySummaryRepository qualitySummaryRepository,
+                                                      CatalogApplicationRepository applicationRepository,
+                                                      @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return new CatalogGovernanceService(catalogService, lineageRepository, qualitySummaryRepository,
+                applicationRepository, jdbcTemplate);
     }
 
     @Bean

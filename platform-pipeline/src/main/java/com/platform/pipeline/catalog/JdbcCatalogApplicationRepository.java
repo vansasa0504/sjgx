@@ -70,6 +70,14 @@ public class JdbcCatalogApplicationRepository implements CatalogApplicationRepos
         return count != null && count > 0;
     }
 
+    @Override
+    public long countByCatalog(long catalogId) {
+        Long count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_catalog_application WHERE catalog_id = ?",
+                Long.class, catalogId);
+        return count == null ? 0L : count;
+    }
+
     private CatalogApplication transit(long id, String approver, String targetStatus) {
         CatalogApplication current = findById(id)
                 .orElseThrow(() -> new BusinessException("CATALOG_APP-404", "application not found"));

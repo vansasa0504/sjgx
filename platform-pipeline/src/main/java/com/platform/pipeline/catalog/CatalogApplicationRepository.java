@@ -15,4 +15,6 @@ public interface CatalogApplicationRepository {
     List<CatalogApplication> findByApplicant(String applicant);
 
     boolean hasApproved(long catalogId, String applicant);
+
+    long countByCatalog(long catalogId);
 }

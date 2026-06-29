@@ -325,6 +325,47 @@ class PipelineModuleMockMvcTest {
     }
 
     @Test
+    void catalogGovernanceEndpointsRequirePermissionAndReturnTraceableDetail() throws Exception {
+        long catalogId = createCatalogItem("cat-governance-mvc").id();
+        catalogService.bindIngestTask(catalogId, 88L, "ingest-88");
+        catalogService.bindService(catalogId, "svc-governance-mvc", "治理服务");
+        catalogService.upsertQualitySummary(catalogId, 96.5, 2);
+        catalogApplicationRepository.create(catalogId, "consumer-a", "reason", "svc-governance-mvc");
+
+        mockMvc.perform(get("/api/v1/catalog/%d/detail".formatted(catalogId)))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/catalog/%d/detail".formatted(catalogId))
+                .header("Authorization", "Bearer " + viewerToken()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/catalog/%d/lineage".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogViewerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[?(@.nodeType=='DATA_SERVICE')]").isArray());
+
+        mockMvc.perform(get("/api/v1/catalog/%d/quality-summary".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogViewerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.score").value(96.5))
+                .andExpect(jsonPath("$.data.issueCount").value(2));
+
+        mockMvc.perform(get("/api/v1/catalog/%d/usage-summary".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogViewerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.applicationCount").value(1));
+
+        mockMvc.perform(get("/api/v1/catalog/%d/detail".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogViewerToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.meta.catalogCode").value("cat-governance-mvc"))
+                .andExpect(jsonPath("$.data.lineage.length()").value(3))
+                .andExpect(jsonPath("$.data.quality.score").value(96.5))
+                .andExpect(jsonPath("$.data.usage.applicationCount").value(1));
+    }
+
+    @Test
     void serviceInvokeIsWhitelistedNoToken() throws Exception {
         mockMvc.perform(post("/api/v1/services/nonexistent/invoke")
                 .contentType(MediaType.APPLICATION_JSON)

@@ -105,6 +105,16 @@ class MigrationDialectCompatibilityTest {
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, 1L, 10L, "HTTP", 3L, "{\"offset\":3}");
         jdbcTemplate.update("""
+                INSERT INTO t_catalog_lineage
+                (id, catalog_id, node_type, node_id, node_name, direction, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, 1L, 1L, "DATA_SERVICE", 1L, "svc-a", "DOWNSTREAM");
+        jdbcTemplate.update("""
+                INSERT INTO t_catalog_quality_summary
+                (id, catalog_id, score, issue_count, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, 1L, 1L, new BigDecimal("96.50"), 2);
+        jdbcTemplate.update("""
                 INSERT INTO t_audit_log
                 (id, trace_id, event_type, actor_type, actor_id, target_type, target_id, action,
                  detail, status, created_at, prev_hash, hash)
@@ -130,6 +140,12 @@ class MigrationDialectCompatibilityTest {
         assertEquals(3L, jdbcTemplate.queryForObject(
                 "SELECT offset_value FROM t_ingest_checkpoint WHERE task_id = ? AND connector_type = ?",
                 Long.class, 10L, "HTTP"));
+        assertEquals("svc-a", jdbcTemplate.queryForObject(
+                "SELECT node_name FROM t_catalog_lineage WHERE catalog_id = ? AND node_type = ?",
+                String.class, 1L, "DATA_SERVICE"));
+        assertEquals(2, jdbcTemplate.queryForObject(
+                "SELECT issue_count FROM t_catalog_quality_summary WHERE catalog_id = ?",
+                Integer.class, 1L));
         assertEquals("abc123", jdbcTemplate.queryForObject("SELECT hash FROM t_audit_log WHERE id = ?", String.class, 1L));
     }
 

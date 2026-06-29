@@ -17,14 +17,26 @@ public class CatalogService {
     private final IdGenerator idGenerator;
     private final List<DataCatalogItem> items = new ArrayList<>();
     private final JdbcTemplate jdbcTemplate;
+    private final CatalogLineageRepository lineageRepository;
+    private final CatalogQualitySummaryRepository qualitySummaryRepository;
 
     public CatalogService() {
         this(null);
     }
 
     public CatalogService(JdbcTemplate jdbcTemplate) {
+        this(jdbcTemplate,
+                jdbcTemplate == null ? new InMemoryCatalogLineageRepository() : new JdbcCatalogLineageRepository(jdbcTemplate),
+                jdbcTemplate == null ? new InMemoryCatalogQualitySummaryRepository() : new JdbcCatalogQualitySummaryRepository(jdbcTemplate));
+    }
+
+    public CatalogService(JdbcTemplate jdbcTemplate,
+                          CatalogLineageRepository lineageRepository,
+                          CatalogQualitySummaryRepository qualitySummaryRepository) {
         this.jdbcTemplate = jdbcTemplate;
         this.idGenerator = jdbcTemplate != null ? new IdGenerator(jdbcTemplate) : null;
+        this.lineageRepository = lineageRepository;
+        this.qualitySummaryRepository = qualitySummaryRepository;
     }
 
 
@@ -37,14 +49,35 @@ public class CatalogService {
         if (jdbcTemplate != null) {
             jdbcTemplate.update(
                     "INSERT INTO t_data_catalog (id, catalog_code, name, subject, partner_id, data_type, scenario, "
-                            + "field_definitions, format, update_frequency, source, compliance_note, usage_limit) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "field_definitions, format, update_frequency, source, compliance_note, usage_limit, created_at, updated_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                     item.id(), item.catalogCode(), item.name(), item.subject(), item.partnerId(), item.dataType(),
                     item.scenario(), toJson(item.fieldDefinitions()), item.format(), item.updateFrequency(),
                     item.source(), item.complianceNote(), item.usageLimit());
         }
         items.add(item);
+        bindPartner(item.id(), item.partnerId(), "partner-" + item.partnerId());
         return item;
+    }
+
+    public void bindPartner(long catalogId, long partnerId, String partnerName) {
+        lineageRepository.save(new CatalogLineage(catalogId, CatalogLineage.PARTNER, partnerId,
+                partnerName, CatalogLineage.UPSTREAM));
+    }
+
+    public void bindIngestTask(long catalogId, long taskId, String taskName) {
+        lineageRepository.save(new CatalogLineage(catalogId, CatalogLineage.INGEST_TASK, taskId,
+                taskName, CatalogLineage.UPSTREAM));
+    }
+
+    public void bindService(long catalogId, String serviceCode, String serviceName) {
+        long nodeId = Math.abs((long) serviceCode.hashCode());
+        lineageRepository.save(new CatalogLineage(catalogId, CatalogLineage.DATA_SERVICE, nodeId,
+                serviceCode, CatalogLineage.DOWNSTREAM));
+    }
+
+    public CatalogQualitySummary upsertQualitySummary(long catalogId, double score, int issueCount) {
+        return qualitySummaryRepository.upsert(catalogId, score, issueCount);
     }
 
     public List<DataCatalogItem> query(String subject, Long partnerId, String dataType, String scenario) {
