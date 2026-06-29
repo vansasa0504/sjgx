@@ -50,6 +50,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 
 export interface TableColumn {
   prop: string
@@ -88,6 +89,10 @@ async function load() {
     const result = await props.fetchData({ page: page.value, size: size.value, ...filterModel })
     records.value = result.records
     total.value = result.total
+  } catch (err) {
+    records.value = []
+    total.value = 0
+    ElMessage.error(err instanceof Error ? err.message : '数据加载失败')
   } finally {
     loading.value = false
   }

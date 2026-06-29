@@ -3,7 +3,7 @@
     <div class="page-header"><h1>计费管理</h1></div>
     <el-tabs>
       <el-tab-pane label="规则">
-        <el-button v-if="auth.hasPermission('billing:create')" type="primary" @click="openRule">新增规则</el-button>
+        <el-button v-if="auth.hasPermission('billing:create')" type="primary" @click="openRule()">新增规则</el-button>
         <PageTable ref="ruleTable" :columns="ruleColumns" :fetch-data="fetchRules">
           <template #actions="{ row }">
             <el-button v-if="auth.hasPermission('billing:update')" size="small" @click="openRule(row as BillingRule)">编辑</el-button>
@@ -49,6 +49,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import PageTable from '../components/PageTable.vue'
 import FormDialog, { type FormField } from '../components/FormDialog.vue'
 import { confirmBill, createBillingRule, disputeBill, generateBill, getBill, getBillingStats, listBillingRules, listBills, updateBillingRule } from '../api/billing'
@@ -71,7 +72,15 @@ async function fetchBills(params: PageQuery): Promise<Page<Bill>> { return toPag
 function refresh() { ruleTable.value?.refresh(); billTable.value?.refresh() }
 function openRule(row?: BillingRule) { dialog.value = { visible: true, title: row ? '编辑计费规则' : '新增计费规则', fields: ruleFields, initial: row as never || { currency: 'CNY' }, submit: async (form) => { row?.id ? await updateBillingRule(row.id, form as never) : await createBillingRule(form as never) } } }
 function openBill() { dialog.value = { visible: true, title: '生成账单', fields: billFields, initial: { billType: 'EXPENSE', period: 'MONTHLY' }, submit: async (form) => { await generateBill(form) } } }
-async function confirm(row: Bill) { await confirmBill(row.billNo); refresh() }
+async function confirm(row: Bill) {
+  try {
+    await confirmBill(row.billNo)
+    ElMessage.success('账单已确认')
+    refresh()
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : '账单确认失败')
+  }
+}
 async function showBill(row: Bill) {
   selectedBill.value = await getBill(row.billNo)
   detailVisible.value = true

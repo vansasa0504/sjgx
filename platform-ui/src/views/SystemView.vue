@@ -3,7 +3,7 @@
     <div class="page-header"><h1>系统管理</h1></div>
     <el-tabs @tab-change="loadAux">
       <el-tab-pane label="用户">
-        <el-button v-if="auth.hasPermission('system:create')" type="primary" @click="openUser">新建用户</el-button>
+        <el-button v-if="auth.hasPermission('system:create')" type="primary" @click="openUser()">新建用户</el-button>
         <PageTable ref="userTable" :columns="userColumns" :fetch-data="fetchUsers">
           <template #actions="{ row }">
             <el-button v-if="auth.hasPermission('system:update')" size="small" @click="openUser(row as UserAccount)">编辑权限</el-button>
@@ -45,9 +45,15 @@ const dialog = ref({ visible: false, title: '', fields: [] as FormField[], initi
 
 async function fetchUsers(params: PageQuery): Promise<Page<UserAccount>> { return listUsers(params) }
 function csv(value: unknown) { return String(value || '').split(',').map((v) => v.trim()).filter(Boolean) }
-function openUser(row?: UserAccount) { dialog.value = { visible: true, title: row ? '编辑用户' : '新建用户', fields: row ? userFields.filter((field) => field.prop !== 'password') : userFields, initial: row ? { ...row, permissions: row.permissions.join(',') } : {}, submit: async (form) => { row ? await updateUser(row.username, csv(form.permissions)) : await createUser({ username: String(form.username), password: String(form.password), permissions: csv(form.permissions) }) } } }
+function openUser(row?: UserAccount) {
+  const permissions = Array.isArray(row?.permissions) ? row.permissions : []
+  dialog.value = { visible: true, title: row ? '编辑用户' : '新建用户', fields: row ? userFields.filter((field) => field.prop !== 'password') : userFields, initial: row ? { ...row, permissions: permissions.join(',') } : {}, submit: async (form) => { row ? await updateUser(row.username, csv(form.permissions)) : await createUser({ username: String(form.username), password: String(form.password), permissions: csv(form.permissions) }) } }
+}
 function openRole() { dialog.value = { visible: true, title: '新建角色', fields: roleFields, initial: {}, submit: async (form) => { await createRole({ name: String(form.name), permissions: csv(form.permissions) }) } } }
-function openRolePerm(row: Role) { dialog.value = { visible: true, title: '配置角色权限', fields: roleFields, initial: { name: row.name, permissions: row.permissions.join(',') }, submit: async (form) => { await updateRolePermissions(row.name, csv(form.permissions)) } } }
+function openRolePerm(row: Role) {
+  const permissions = Array.isArray(row.permissions) ? row.permissions : []
+  dialog.value = { visible: true, title: '配置角色权限', fields: roleFields, initial: { name: row.name, permissions: permissions.join(',') }, submit: async (form) => { await updateRolePermissions(row.name, csv(form.permissions)) } }
+}
 async function loadAux() {
   if (roles.value.length === 0) roles.value = await listRoles()
   if (permissions.value.length === 0) permissions.value = await listPermissions()

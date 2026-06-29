@@ -2,7 +2,7 @@
   <section class="panel">
     <div class="page-header">
       <h1>统计监管</h1>
-      <el-button @click="loadDashboard">刷新面板</el-button>
+      <el-button v-if="auth.hasPermission('stats:view')" @click="loadDashboard">刷新面板</el-button>
     </div>
     <div class="grid">
       <div class="metric">调用量 {{ dashboardValue('invokeCount') }}</div>
@@ -14,13 +14,13 @@
     <el-divider />
     <el-form :inline="true">
       <el-form-item label="报表类型"><el-input v-model="reportType" /></el-form-item>
-      <el-form-item><el-button type="primary" @click="loadReport">生成报表</el-button></el-form-item>
-      <el-form-item><el-button @click="exportReport">导出报表</el-button></el-form-item>
+      <el-form-item><el-button v-if="auth.hasPermission('stats:view')" type="primary" @click="loadReport">生成报表</el-button></el-form-item>
+      <el-form-item><el-button v-if="auth.hasPermission('stats:view')" @click="exportReport">导出报表</el-button></el-form-item>
     </el-form>
     <pre>{{ report }}</pre>
     <h2>合规审计</h2>
     <div class="audit-tools">
-      <el-button @click="loadAuditVerify">校验审计链</el-button>
+      <el-button v-if="auth.hasPermission('stats:view')" @click="loadAuditVerify">校验审计链</el-button>
       <el-tag v-if="auditVerify" :type="auditVerify.intact ? 'success' : 'danger'">
         {{ auditVerify.intact ? '审计链完整' : `断链 ${auditVerify.firstBrokenId}` }}
       </el-tag>
@@ -36,7 +36,9 @@ import * as echarts from 'echarts'
 import PageTable from '../components/PageTable.vue'
 import { fetchDashboard, generateReport, listAudit, verifyAudit } from '../api/stats'
 import { toPage, type Page, type PageQuery } from '../api/types'
+import { useAuthStore } from '../stores/auth'
 
+const auth = useAuthStore()
 const dashboard = ref<Record<string, unknown>>({})
 const chartEl = ref<HTMLElement>()
 let chart: echarts.ECharts | undefined
@@ -48,17 +50,39 @@ const auditFilters = [{ prop: 'traceId', label: 'TraceID' }, { prop: 'eventType'
 
 function dashboardValue(key: string) { return dashboard.value?.[key] ?? '-' }
 async function loadDashboard() {
-  dashboard.value = await fetchDashboard() as Record<string, unknown>
-  if (chartEl.value && !chart) chart = echarts.init(chartEl.value)
-  chart?.setOption({
-    tooltip: {},
-    xAxis: { type: 'category', data: ['调用量', '服务数', '成本'] },
-    yAxis: { type: 'value' },
-    series: [{ type: 'bar', data: [Number(dashboardValue('invokeCount')) || 0, Number(dashboardValue('runningServices')) || 0, Number(dashboardValue('costAmount')) || 0] }]
-  })
+  try {
+    dashboard.value = await fetchDashboard() as Record<string, unknown>
+    if (chartEl.value && !chart) chart = echarts.init(chartEl.value)
+    chart?.setOption({
+      tooltip: {},
+      xAxis: { type: 'category', data: ['调用量', '服务数', '成本'] },
+      yAxis: { type: 'value' },
+      series: [{ type: 'bar', data: [Number(dashboardValue('invokeCount')) || 0, Number(dashboardValue('runningServices')) || 0, Number(dashboardValue('costAmount')) || 0] }]
+    })
+  } catch (err) {
+    dashboard.value = {}
+    ElMessage.error(err instanceof Error ? err.message : '统计面板加载失败')
+  }
 }
 async function loadReport() { report.value = await generateReport({ type: reportType.value }) }
-function exportReport() { ElMessage.success('报表已生成，可在后端报表目录下载') }
+async function exportReport() {
+  try {
+    const generated = report.value ?? await generateReport({ type: reportType.value })
+    report.value = generated
+    const blob = new Blob([typeof generated === 'string' ? generated : JSON.stringify(generated, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${reportType.value || 'report'}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    ElMessage.success('报表已导出')
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : '报表导出失败')
+  }
+}
 async function loadAuditVerify() { auditVerify.value = await verifyAudit() as Record<string, unknown> & { intact?: boolean; firstBrokenId?: number } }
 async function fetchAudit(params: PageQuery): Promise<Page<Record<string, unknown>>> {
   return toPage(await listAudit({ eventType: params.eventType || 'login', traceId: params.traceId, ...params }) as Record<string, unknown>[], Number(params.page || 1), Number(params.size || 10))

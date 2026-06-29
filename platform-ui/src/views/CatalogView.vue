@@ -13,6 +13,7 @@
       </div>
     </div>
     <div class="grid">
+      <el-empty v-if="items.length === 0" description="暂无数据" />
       <el-card v-for="item in items" :key="item.id" class="catalog-card">
         <h3>{{ item.name || item.subject || `资产 ${item.id}` }}</h3>
         <p>类型：{{ item.dataType || '-' }}</p>
@@ -56,6 +57,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import FormDialog, { type FormField } from '../components/FormDialog.vue'
 import { applyCatalog, approveApplication, getCatalogMeta, listCatalog, previewCatalog, rejectApplication, searchCatalog } from '../api/catalog'
 import type { CatalogItem } from '../api/types'
@@ -80,14 +82,26 @@ const applyFields: FormField[] = [
 ]
 
 async function load() {
-  items.value = await listCatalog({
-    subject: filters.value.subject || undefined,
-    partnerId: filters.value.partnerId ? Number(filters.value.partnerId) : undefined,
-    dataType: filters.value.dataType || undefined,
-    scenario: filters.value.scenario || undefined
-  })
+  try {
+    items.value = await listCatalog({
+      subject: filters.value.subject || undefined,
+      partnerId: filters.value.partnerId ? Number(filters.value.partnerId) : undefined,
+      dataType: filters.value.dataType || undefined,
+      scenario: filters.value.scenario || undefined
+    })
+  } catch (err) {
+    items.value = []
+    ElMessage.error(err instanceof Error ? err.message : '目录加载失败')
+  }
 }
-async function search() { items.value = keyword.value ? await searchCatalog(keyword.value) : await listCatalog() }
+async function search() {
+  try {
+    items.value = keyword.value ? await searchCatalog(keyword.value) : await listCatalog()
+  } catch (err) {
+    items.value = []
+    ElMessage.error(err instanceof Error ? err.message : '目录检索失败')
+  }
+}
 function resetPreview() {
   previewSample.value = []
   previewStats.value = {}

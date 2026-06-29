@@ -2,7 +2,7 @@
   <section class="panel">
     <div class="page-header">
       <h1>数据质量</h1>
-      <el-button v-if="auth.hasPermission('quality:create')" type="primary" @click="openRule">新建规则</el-button>
+      <el-button v-if="auth.hasPermission('quality:create')" type="primary" @click="openRule()">新建规则</el-button>
     </div>
     <el-tabs>
       <el-tab-pane label="规则配置">

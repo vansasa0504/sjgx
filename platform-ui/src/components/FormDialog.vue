@@ -1,7 +1,7 @@
 <template>
   <el-dialog v-model="visible" :title="title" width="520px" @closed="reset">
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="form-error" />
-    <el-form ref="formRef" :model="form" label-width="108px">
+    <el-form ref="formRef" :model="form" :rules="formRules" label-width="108px">
       <el-form-item
         v-for="field in fields"
         :key="field.prop"
@@ -61,6 +61,10 @@ const visible = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit('update:modelValue', value)
 })
+const formRules = computed(() => Object.fromEntries(props.fields.map((field) => [
+  field.prop,
+  field.rules || (field.required ? [{ required: true, message: `请输入${field.label}` }] : [])
+])))
 
 function applyInitial() {
   Object.keys(form).forEach((key) => delete form[key])
@@ -77,6 +81,7 @@ function reset() {
 
 async function submitForm() {
   error.value = ''
+  if (hasMissingRequired()) return
   try {
     await formRef.value?.validate()
   } catch {
@@ -92,6 +97,16 @@ async function submitForm() {
   } finally {
     submitting.value = false
   }
+}
+
+function hasMissingRequired() {
+  const missing = props.fields.find((field) => {
+    if (!field.required) return false
+    const value = form[field.prop]
+    return value === undefined || value === null || value === ''
+  })
+  if (missing) error.value = `请输入${missing.label}`
+  return Boolean(missing)
 }
 
 watch(() => props.modelValue, (value) => {

@@ -28,11 +28,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageTable from '../components/PageTable.vue'
 import FormDialog, { type FormField } from '../components/FormDialog.vue'
 import { approveIngest, createIngestTask, getIngestTask, listIngestRecords, listIngestTasks, offlineIngest, submitIngest, testIngest, updateMapping, updateRules } from '../api/ingest'
+import { listPartners } from '../api/partner'
 import { toPage, type IngestTask, type Page, type PageQuery } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 
@@ -42,6 +43,7 @@ const detailVisible = ref(false)
 const detail = ref<IngestTask>()
 const testRows = ref<unknown[]>([])
 const records = ref<unknown>()
+const partnerOptions = ref<Array<{ label: string; value: number }>>([])
 const filters = [{ prop: 'partnerId', label: '合作方ID' }, { prop: 'status', label: '状态' }]
 const columns = [
   { prop: 'id', label: '任务ID' },
@@ -54,7 +56,7 @@ const columns = [
   { prop: 'actions', label: '操作', width: 460 }
 ]
 const createFields: FormField[] = [
-  { prop: 'partnerId', label: '合作方ID', type: 'number', required: true },
+  { prop: 'partnerId', label: '合作方', type: 'select', options: partnerOptions.value, required: true },
   { prop: 'protocol', label: '协议', type: 'input' },
   { prop: 'format', label: '格式', type: 'input' },
   { prop: 'endpoint', label: '端点', type: 'input', required: true },
@@ -122,4 +124,12 @@ function status(row: IngestTask) { return String(row.status || '').toUpperCase()
 function canSubmit(row: IngestTask) { return auth.hasPermission('ingest:approve') && status(row) === 'TESTING' }
 function canApprove(row: IngestTask) { return auth.hasPermission('ingest:approve') && status(row) === 'PENDING_APPROVAL' }
 function canOffline(row: IngestTask) { return auth.hasPermission('ingest:approve') && ['ONLINE'].includes(status(row)) }
+async function loadPartnerOptions() {
+  const partners = await listPartners({ page: 1, size: 100 })
+  partnerOptions.value.splice(0, partnerOptions.value.length, ...partners.records.map((partner) => ({
+    label: partner.name || partner.partnerCode || `合作方 ${partner.id}`,
+    value: partner.id
+  })))
+}
+onMounted(loadPartnerOptions)
 </script>
