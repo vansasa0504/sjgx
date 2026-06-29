@@ -10,7 +10,13 @@ import com.platform.billing.bill.InMemoryBillRepository;
 import com.platform.billing.bill.JdbcBillItemRepository;
 import com.platform.billing.bill.JdbcBillRepository;
 import com.platform.billing.dashboard.DashboardService;
+import com.platform.billing.regulatory.MockRegulatoryReportingAdapter;
+import com.platform.billing.regulatory.RegulatoryReportingAdapter;
 import com.platform.billing.report.ReportGenerator;
+import com.platform.billing.report.InMemoryRegulatoryReportRepository;
+import com.platform.billing.report.JdbcRegulatoryReportRepository;
+import com.platform.billing.report.RegulatoryReportRepository;
+import com.platform.billing.report.RegulatoryReportService;
 import com.platform.billing.rule.BillingRuleEngine;
 import com.platform.billing.rule.BillingRuleRepository;
 import com.platform.billing.rule.InMemoryBillingRuleRepository;
@@ -122,6 +128,19 @@ public class BillingApplication {
     }
 
     @Bean
+    RegulatoryReportingAdapter regulatoryReportingAdapter() {
+        return new MockRegulatoryReportingAdapter();
+    }
+
+    @Bean
+    RegulatoryReportRepository regulatoryReportRepository(
+            @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate != null
+                ? new JdbcRegulatoryReportRepository(jdbcTemplate)
+                : new InMemoryRegulatoryReportRepository();
+    }
+
+    @Bean
     AuditLogRepository auditLogRepository(
             @Autowired(required = false) JdbcTemplate jdbcTemplate) {
         return jdbcTemplate != null
@@ -132,6 +151,17 @@ public class BillingApplication {
     @Bean
     AuditTraceService auditTraceService(AuditLogRepository auditLogRepository) {
         return new AuditTraceService(auditLogRepository);
+    }
+
+    @Bean
+    RegulatoryReportService regulatoryReportService(
+            RegulatoryReportRepository regulatoryReportRepository,
+            RegulatoryReportingAdapter regulatoryReportingAdapter,
+            AuditLogRepository auditLogRepository,
+            @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
+        return new RegulatoryReportService(
+                () -> invokeLogRepository == null ? List.of() : invokeLogRepository.findAll(),
+                regulatoryReportRepository, regulatoryReportingAdapter, auditLogRepository);
     }
 
     @Bean

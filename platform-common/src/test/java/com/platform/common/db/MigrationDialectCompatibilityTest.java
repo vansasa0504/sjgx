@@ -122,6 +122,18 @@ class MigrationDialectCompatibilityTest {
                 """, 1L, "trace-a", "BILL", "USER", "u1", "BILL", "b1", "CREATE",
                 "detail", "SUCCESS", "", "abc123");
 
+        jdbcTemplate.update("""
+                INSERT INTO t_quality_report
+                (id, dimension, dimension_value, check_count, pass_count, fail_count, fail_rate, score, generated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, 1L, "PARTNER", "partner-1", 10, 6, 4, 0.4, new BigDecimal("60.00"));
+        jdbcTemplate.update("""
+                INSERT INTO t_regulatory_report
+                (id, report_type, period_from, period_to, content, status, receipt_no, receipt_message,
+                 generated_at, submitted_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, 1L, "COMPLIANCE", "{\"reportType\":\"COMPLIANCE\"}", "SUBMITTED", "REG-COMPLIANCE", "ok");
+
         Map<String, Object> invokeLog = jdbcTemplate.queryForMap("""
                 SELECT service_code, consumer_code, status_code, response_size
                 FROM t_service_invoke_log
@@ -146,19 +158,34 @@ class MigrationDialectCompatibilityTest {
         assertEquals(2, jdbcTemplate.queryForObject(
                 "SELECT issue_count FROM t_catalog_quality_summary WHERE catalog_id = ?",
                 Integer.class, 1L));
+        assertEquals(60.0, ((Number) jdbcTemplate.queryForObject(
+                "SELECT score FROM t_quality_report WHERE id = ?",
+                Object.class, 1L)).doubleValue(), 0.01);
+        assertEquals("PARTNER", jdbcTemplate.queryForObject(
+                "SELECT dimension FROM t_quality_report WHERE id = ?",
+                String.class, 1L));
+        assertPayload(jdbcTemplate.queryForObject("SELECT content FROM t_regulatory_report WHERE id = ?", Object.class, 1L),
+                "{\"reportType\":\"COMPLIANCE\"}");
+        assertEquals("REG-COMPLIANCE", jdbcTemplate.queryForObject(
+                "SELECT receipt_no FROM t_regulatory_report WHERE id = ?",
+                String.class, 1L));
         assertEquals("abc123", jdbcTemplate.queryForObject("SELECT hash FROM t_audit_log WHERE id = ?", String.class, 1L));
     }
 
     private void assertPayload(Object payload) {
+        assertPayload(payload, "{\"name\":\"alpha\"}");
+    }
+
+    private void assertPayload(Object payload, String expected) {
         if (payload instanceof Clob clob) {
             try {
-                assertEquals("{\"name\":\"alpha\"}", clob.getSubString(1, (int) clob.length()));
+                assertEquals(expected, clob.getSubString(1, (int) clob.length()));
                 return;
             } catch (Exception ex) {
                 throw new AssertionError("Failed to read payload CLOB", ex);
             }
         }
-        assertEquals("{\"name\":\"alpha\"}", String.valueOf(payload));
+        assertEquals(expected, String.valueOf(payload));
     }
 
     private void assertColumnType(JdbcTemplate jdbcTemplate, String tableName, String columnName, String expectedTypeName) {
