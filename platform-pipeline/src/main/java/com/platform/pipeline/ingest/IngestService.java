@@ -7,7 +7,10 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -18,6 +21,7 @@ public class IngestService {
     private final AtomicLong ids = new AtomicLong(1);
     private final Map<Long, IngestTask> tasks = new ConcurrentHashMap<>();
     private final ProtocolAdapter adapter;
+    private final Map<String, ProtocolAdapter> adapters;
     private final FormatConverter converter;
     private final RawDataRepository repository;
     private final IngestQualityGuard qualityGuard;
@@ -36,11 +40,20 @@ public class IngestService {
     public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository,
                          IngestQualityGuard qualityGuard, JdbcTemplate jdbcTemplate) {
         this.adapter = adapter;
+        this.adapters = new HashMap<>();
+        this.adapters.put(adapter.protocol().toUpperCase(Locale.ROOT), adapter);
         this.converter = converter;
         this.repository = repository;
         this.qualityGuard = qualityGuard;
         this.jdbcTemplate = jdbcTemplate;
         this.idGenerator = jdbcTemplate != null ? new IdGenerator(jdbcTemplate) : null;
+    }
+
+    public IngestService(Collection<ProtocolAdapter> adapters, ProtocolAdapter defaultAdapter,
+                         FormatConverter converter, RawDataRepository repository,
+                         IngestQualityGuard qualityGuard, JdbcTemplate jdbcTemplate) {
+        this(defaultAdapter, converter, repository, qualityGuard, jdbcTemplate);
+        adapters.forEach(candidate -> this.adapters.put(candidate.protocol().toUpperCase(Locale.ROOT), candidate));
     }
 
     private boolean useDb() {
@@ -49,7 +62,7 @@ public class IngestService {
 
     public IngestTask createTask(long partnerId, URI endpoint) {
         long id = useDb() ? idGenerator.nextId("t_ingest_task") : ids.getAndIncrement();
-        IngestTask task = new IngestTask(id, partnerId, endpoint, adapter.protocol(), converter.format());
+        IngestTask task = new IngestTask(id, partnerId, endpoint, adapterFor(endpoint, null).protocol(), converter.format());
         persistTask(task);
         tasks.put(task.id(), task);
         return task;
@@ -114,7 +127,7 @@ public class IngestService {
     public List<RawDataRecord> testAndIngest(IngestTask task) {
         try {
             transition(task, IngestTaskEvent.START_TEST);
-            String payload = adapter.fetch(task.endpoint());
+            String payload = adapterFor(task.endpoint(), task.protocol()).fetch(task.endpoint());
             List<Map<String, String>> converted = converter.convert(payload);
             qualityGuard.validate(converted);
             List<RawDataRecord> records = converted.stream()
@@ -202,6 +215,14 @@ public class IngestService {
         }
         task.status(IngestTaskStatus.valueOf(status));
         return task;
+    }
+
+    private ProtocolAdapter adapterFor(URI endpoint, String protocol) {
+        String key = protocol == null || protocol.isBlank() ? endpoint.getScheme() : protocol;
+        if (key == null || key.isBlank()) {
+            return adapter;
+        }
+        return adapters.getOrDefault(key.toUpperCase(Locale.ROOT), adapter);
     }
 
 }

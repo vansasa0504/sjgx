@@ -30,10 +30,19 @@
         <hutool.version>5.8.27</hutool.version>
         <lombok.version>1.18.32</lombok.version>
         <bouncycastle.version>1.78.1</bouncycastle.version>
+        <testcontainers.version>1.21.3</testcontainers.version>
+        <minio.version>8.5.10</minio.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -104,6 +113,9 @@
                     <version>3.2.5</version>
                     <configuration>
                         <useModulePath>false</useModulePath>
+                        <systemPropertyVariables>
+                            <api.version>1.40</api.version>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -125,5 +137,3 @@
         </pluginManagement>
     </build>
 </project>
-
-

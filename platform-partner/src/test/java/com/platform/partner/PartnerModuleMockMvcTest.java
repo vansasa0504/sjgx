@@ -93,7 +93,7 @@ class PartnerModuleMockMvcTest {
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/partners/" + id + "/submit")
                 .header("Authorization", "Bearer " + adminToken()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
     }
 
     @Test

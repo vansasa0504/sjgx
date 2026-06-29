@@ -2,8 +2,10 @@ package com.platform.common.audit;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import com.platform.common.db.IdGenerator;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,18 +23,22 @@ public class JdbcAuditLogRepository implements AuditLogRepository {
     @Override
     public synchronized AuditEvent append(AuditEvent event) {
         long id = event.id() == null ? idGenerator.nextId("t_audit_log") : event.id();
+        Instant createdAt = event.createdAt().truncatedTo(ChronoUnit.SECONDS);
+        AuditEvent persistedEvent = new AuditEvent(id, event.traceId(), event.eventType(), event.actorType(),
+                event.actorId(), event.targetType(), event.targetId(), event.action(), event.detail(),
+                event.sourceIp(), event.userAgent(), event.status(), createdAt);
         String prevHash = latestHash();
-        String hash = AuditHashing.hash(prevHash, event);
+        String hash = AuditHashing.hash(prevHash, persistedEvent);
         jdbcTemplate.update("""
                 INSERT INTO t_audit_log
                 (id, trace_id, event_type, actor_type, actor_id, target_type, target_id, action, detail, source_ip, user_agent, status, created_at, prev_hash, hash)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, id, event.traceId(), event.eventType(), event.actorType(), event.actorId(), event.targetType(),
-                event.targetId(), event.action(), event.detail(), event.sourceIp(), event.userAgent(),
-                event.status().name(), Timestamp.from(event.createdAt()), prevHash, hash);
-        return new AuditEvent(id, event.traceId(), event.eventType(), event.actorType(), event.actorId(),
-                event.targetType(), event.targetId(), event.action(), event.detail(), event.sourceIp(),
-                event.userAgent(), event.status(), event.createdAt(), prevHash, hash);
+                """, id, persistedEvent.traceId(), persistedEvent.eventType(), persistedEvent.actorType(), persistedEvent.actorId(), persistedEvent.targetType(),
+                persistedEvent.targetId(), persistedEvent.action(), persistedEvent.detail(), persistedEvent.sourceIp(), persistedEvent.userAgent(),
+                persistedEvent.status().name(), Timestamp.from(createdAt), prevHash, hash);
+        return new AuditEvent(id, persistedEvent.traceId(), persistedEvent.eventType(), persistedEvent.actorType(), persistedEvent.actorId(),
+                persistedEvent.targetType(), persistedEvent.targetId(), persistedEvent.action(), persistedEvent.detail(), persistedEvent.sourceIp(),
+                persistedEvent.userAgent(), persistedEvent.status(), createdAt, prevHash, hash);
     }
 
     @Override
@@ -78,12 +84,15 @@ public class JdbcAuditLogRepository implements AuditLogRepository {
     }
 
     private String latestHash() {
-        List<String> hashes = jdbcTemplate.query("""
-                SELECT hash FROM t_audit_log
-                WHERE hash IS NOT NULL
-                ORDER BY id DESC
-                FETCH FIRST 1 ROWS ONLY
-                """, (rs, rowNum) -> rs.getString("hash"));
+        List<String> hashes = jdbcTemplate.query(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                    SELECT hash FROM t_audit_log
+                    WHERE hash IS NOT NULL
+                    ORDER BY id DESC
+                    """);
+            statement.setMaxRows(1);
+            return statement;
+        }, (rs, rowNum) -> rs.getString("hash"));
         return hashes.isEmpty() ? "" : hashes.get(0);
     }
 

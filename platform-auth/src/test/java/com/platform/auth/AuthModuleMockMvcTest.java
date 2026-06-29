@@ -75,12 +75,12 @@ class AuthModuleMockMvcTest {
     }
 
     @Test
-    void userCreateDuplicateReturns400() throws Exception {
+    void userCreateDuplicateReturns409() throws Exception {
         mockMvc.perform(post("/users")
                 .header("Authorization", "Bearer " + adminToken())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"username\":\"admin\",\"password\":\"pw\",\"permissions\":[\"stats:view\"]}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
     }
 
     @Test

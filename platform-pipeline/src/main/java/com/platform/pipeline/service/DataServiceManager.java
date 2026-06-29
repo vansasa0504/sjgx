@@ -42,10 +42,16 @@ public class DataServiceManager {
 
     public DataServiceManager(ApiCredentialRepository apiCredentialRepository,
                               org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+        this(apiCredentialRepository, jdbcTemplate, new AsyncInvokeLogWriter(jdbcTemplate));
+    }
+
+    public DataServiceManager(ApiCredentialRepository apiCredentialRepository,
+                              org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
+                              AsyncInvokeLogWriter logWriter) {
         this.apiCredentialRepository = apiCredentialRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.idGenerator = jdbcTemplate != null ? new IdGenerator(jdbcTemplate) : null;
-        this.logWriter = new AsyncInvokeLogWriter(jdbcTemplate);
+        this.logWriter = logWriter == null ? new AsyncInvokeLogWriter(jdbcTemplate) : logWriter;
     }
 
 
