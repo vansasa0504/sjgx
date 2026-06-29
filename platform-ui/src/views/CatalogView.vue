@@ -28,20 +28,36 @@
         >
           审批申请
         </el-button>
+        <el-button
+          v-if="auth.hasPermission('catalog:approve') && pendingApplicationId(item)"
+          size="small"
+          type="danger"
+          @click="rejectApplicationFor(item)"
+        >
+          驳回
+        </el-button>
       </el-card>
     </div>
     <FormDialog v-model="applyDialog.visible" title="申请使用" :fields="applyFields" :initial="{}" :submit="submitApply" @success="load" />
     <el-drawer v-model="drawerVisible" title="数据目录详情">
-      <el-table v-if="previewSample.length" :data="previewSample" border />
-      <pre>{{ selectedDetail }}</pre>
+      <el-table v-if="previewSample.length" :data="previewSample" border>
+        <el-table-column v-for="column in previewColumns" :key="column" :prop="column" :label="column" />
+      </el-table>
+      <el-descriptions v-if="Object.keys(previewStats).length" class="preview-section" border :column="1">
+        <el-descriptions-item v-for="(value, key) in previewStats" :key="key" :label="String(key)">
+          {{ value }}
+        </el-descriptions-item>
+      </el-descriptions>
+      <el-alert v-if="qualityReport" class="preview-section" :title="qualityReport" type="success" :closable="false" />
+      <pre v-if="selectedDetail && !previewSample.length">{{ selectedDetail }}</pre>
     </el-drawer>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import FormDialog, { type FormField } from '../components/FormDialog.vue'
-import { applyCatalog, approveApplication, getCatalogMeta, listCatalog, previewCatalog, searchCatalog } from '../api/catalog'
+import { applyCatalog, approveApplication, getCatalogMeta, listCatalog, previewCatalog, rejectApplication, searchCatalog } from '../api/catalog'
 import type { CatalogItem } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 
@@ -54,6 +70,9 @@ const pendingApplicationIds = ref<Record<number, number>>({})
 const drawerVisible = ref(false)
 const selectedDetail = ref<unknown>()
 const previewSample = ref<Record<string, unknown>[]>([])
+const previewStats = ref<Record<string, unknown>>({})
+const qualityReport = ref('')
+const previewColumns = computed(() => previewSample.value.length ? Object.keys(previewSample.value[0]) : [])
 const applyDialog = ref({ visible: false })
 const applyFields: FormField[] = [
   { prop: 'reason', label: '申请原因', type: 'textarea', required: true },
@@ -69,10 +88,17 @@ async function load() {
   })
 }
 async function search() { items.value = keyword.value ? await searchCatalog(keyword.value) : await listCatalog() }
-async function openMeta(item: CatalogItem) { previewSample.value = []; selectedDetail.value = await getCatalogMeta(item.id); drawerVisible.value = true }
+function resetPreview() {
+  previewSample.value = []
+  previewStats.value = {}
+  qualityReport.value = ''
+}
+async function openMeta(item: CatalogItem) { resetPreview(); selectedDetail.value = await getCatalogMeta(item.id); drawerVisible.value = true }
 async function openPreview(item: CatalogItem) {
-  const result = await previewCatalog(item.id) as { sample?: Record<string, unknown>[] }
+  const result = await previewCatalog(item.id)
   previewSample.value = result.sample || []
+  previewStats.value = result.stats || {}
+  qualityReport.value = result.qualityReport || ''
   selectedDetail.value = result
   drawerVisible.value = true
 }
@@ -93,5 +119,18 @@ async function approveApplicationFor(item: CatalogItem) {
     delete pendingApplicationIds.value[item.id]
   }
 }
+async function rejectApplicationFor(item: CatalogItem) {
+  const applicationId = pendingApplicationId(item)
+  if (applicationId) {
+    await rejectApplication(applicationId)
+    delete pendingApplicationIds.value[item.id]
+  }
+}
 onMounted(load)
 </script>
+
+<style scoped>
+.preview-section {
+  margin-top: 16px;
+}
+</style>

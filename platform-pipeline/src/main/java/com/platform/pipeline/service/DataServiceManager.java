@@ -22,6 +22,7 @@ public class DataServiceManager {
     private final AtomicLong ids = new AtomicLong(1);
     private final Map<String, DataServiceDefinition> services = new ConcurrentHashMap<>();
     private final Map<String, String> routeData = new ConcurrentHashMap<>();
+    private final Map<String, String> catalogPartnerGrants = new ConcurrentHashMap<>();
     private final DataServiceStateMachine stateMachine = new DataServiceStateMachine();
     private final AsyncInvokeLogWriter logWriter;
     private final RateLimiter rateLimiter = new RateLimiter(2);
@@ -204,6 +205,15 @@ public class DataServiceManager {
         return apiCredentialRepository.list(serviceCode);
     }
 
+    public void grantCatalogPartner(String serviceCode, String consumerCode, String partnerCode) {
+        if (serviceCode == null || serviceCode.isBlank()
+                || consumerCode == null || consumerCode.isBlank()
+                || partnerCode == null || partnerCode.isBlank()) {
+            return;
+        }
+        catalogPartnerGrants.put(serviceCode + ':' + consumerCode, partnerCode);
+    }
+
     public ApiCredentialRepository.CreatedCredential rotateCredential(long id) {
         return apiCredentialRepository.rotate(id);
     }
@@ -219,8 +229,8 @@ public class DataServiceManager {
     private void writeInvokeLog(String traceId, String serviceCode, String consumerCode, String apiKey,
                                 String requestHash, int status, long start, long responseSize,
                                 String errorCode, String errorMessage) {
-                // partner_code 暂留 null：当前凭证/服务定义未关联 partner，留 P0-07 catalog-application 补充
-        logWriter.write(new ServiceInvokeLog(traceId, serviceCode, consumerCode, null, apiKey, requestHash,
+        String partnerCode = catalogPartnerGrants.get(serviceCode + ':' + consumerCode);
+        logWriter.write(new ServiceInvokeLog(traceId, serviceCode, consumerCode, partnerCode, apiKey, requestHash,
                 status, System.currentTimeMillis() - start, responseSize, errorCode, errorMessage, Instant.now()));
     }
 

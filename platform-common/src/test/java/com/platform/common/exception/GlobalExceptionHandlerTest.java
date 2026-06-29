@@ -14,5 +14,14 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
         assertEquals("AUTH-403", response.getBody().code());
+
+        assertEquals(HttpStatus.NOT_FOUND,
+                handler.handleBusinessException(new BusinessException("CATALOG_APP-404", "missing")).getStatusCode());
+        assertEquals(HttpStatus.CONFLICT,
+                handler.handleBusinessException(new BusinessException("CATALOG_APP-409", "reviewed")).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST,
+                handler.handleBusinessException(new BusinessException("AUTH-404", "api key missing")).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST,
+                handler.handleBusinessException(new BusinessException("QUALITY-404", "rule missing")).getStatusCode());
     }
 }

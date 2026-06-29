@@ -14,8 +14,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Result<Void>> handleBusinessException(BusinessException exception) {
-        HttpStatus status = exception.code().endsWith("401") ? HttpStatus.UNAUTHORIZED
-                : exception.code().endsWith("403") ? HttpStatus.FORBIDDEN
+        String code = exception.code();
+        HttpStatus status = code.endsWith("401") ? HttpStatus.UNAUTHORIZED
+                : code.endsWith("403") ? HttpStatus.FORBIDDEN
+                : code.endsWith("404") && code.startsWith("CATALOG") ? HttpStatus.NOT_FOUND
+                : code.endsWith("409") ? HttpStatus.CONFLICT
                 : HttpStatus.BAD_REQUEST;
         if (status.is5xxServerError()) {
             LOG.error("business exception [{}]: {}", exception.code(), exception.getMessage(), exception);

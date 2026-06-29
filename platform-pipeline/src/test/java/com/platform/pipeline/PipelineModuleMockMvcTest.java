@@ -4,9 +4,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.platform.common.auth.JwtUtil;
+import com.platform.common.audit.AuditLogRepository;
 import com.platform.common.security.PermissionCodes;
+import com.platform.pipeline.catalog.CatalogApplicationRepository;
+import com.platform.pipeline.catalog.CatalogService;
 import com.platform.pipeline.service.DataServiceEvent;
 import com.platform.pipeline.service.DataServiceManager;
+import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,12 +29,21 @@ class PipelineModuleMockMvcTest {
     @Autowired MockMvc mockMvc;
     @Autowired JwtUtil jwtUtil;
     @Autowired DataServiceManager dataServiceManager;
+    @Autowired CatalogService catalogService;
+    @Autowired CatalogApplicationRepository catalogApplicationRepository;
+    @Autowired AuditLogRepository auditLogRepository;
 
     private String adminToken() {
         return jwtUtil.issue("admin", Set.copyOf(PermissionCodes.ALL), 3600);
     }
     private String viewerToken() {
         return jwtUtil.issue("viewer", Set.of("stats:view"), 3600);
+    }
+    private String catalogViewerToken() {
+        return jwtUtil.issue("catalog-viewer", Set.of("catalog:view"), 3600);
+    }
+    private String catalogApplicantToken() {
+        return jwtUtil.issue("consumer-a", Set.of("catalog:view", "catalog:apply"), 3600);
     }
 
     @Test
@@ -133,6 +147,121 @@ class PipelineModuleMockMvcTest {
     }
 
     @Test
+    void catalogApplyRequiresPermissionAndPersistsApplication() throws Exception {
+        long catalogId = createCatalogItem("cat-apply").id();
+
+        mockMvc.perform(post("/api/v1/catalog/%d/apply".formatted(catalogId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"风控准入\",\"scope\":\"svc-risk\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/catalog/%d/apply".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogViewerToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"风控准入\",\"scope\":\"svc-risk\"}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/catalog/%d/apply".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogApplicantToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"风控准入\",\"scope\":\"svc-risk\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").isNumber())
+                .andExpect(jsonPath("$.data.applicant").value("consumer-a"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+    }
+
+    @Test
+    void catalogApproveRequiresPermissionAndTransitionsState() throws Exception {
+        long catalogId = createCatalogItem("cat-approve").id();
+        long applicationId = catalogApplicationRepository.create(catalogId, "consumer-a", "reason", "svc-risk").id();
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/approve".formatted(applicationId)))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/approve".formatted(applicationId))
+                .header("Authorization", "Bearer " + catalogViewerToken()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/approve".formatted(applicationId))
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.approver").value("admin"));
+    }
+
+    @Test
+    void catalogRejectRequiresPermissionAndTransitionsState() throws Exception {
+        long catalogId = createCatalogItem("cat-reject").id();
+        long applicationId = catalogApplicationRepository.create(catalogId, "consumer-a", "reason", "svc-risk").id();
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/reject".formatted(applicationId)))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/reject".formatted(applicationId))
+                .header("Authorization", "Bearer " + catalogViewerToken()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/reject".formatted(applicationId))
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.approver").value("admin"));
+
+        mockMvc.perform(post("/api/v1/catalog/applications/99999999/reject")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/reject".formatted(applicationId))
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void catalogApproveMissingCatalogDoesNotPersistApproval() throws Exception {
+        long applicationId = catalogApplicationRepository.create(999999L, "consumer-a", "reason", "svc-risk").id();
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/approve".formatted(applicationId))
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isNotFound());
+
+        org.junit.jupiter.api.Assertions.assertEquals("PENDING",
+                catalogApplicationRepository.findById(applicationId).orElseThrow().status());
+    }
+
+    @Test
+    void catalogPreviewRequiresApprovalMasksSensitiveFieldsAndWritesAudit() throws Exception {
+        long catalogId = createCatalogItem("cat-preview").id();
+
+        mockMvc.perform(get("/api/v1/catalog/%d/preview".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogViewerToken()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/catalog/%d/preview".formatted(catalogId))
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sample[0].idCard").value("***MASKED***"))
+                .andExpect(jsonPath("$.data.sample[0].credential").value("***MASKED***"))
+                .andExpect(jsonPath("$.data.stats.fieldCount").value(3))
+                .andExpect(jsonPath("$.data.qualityReport").isString());
+
+        org.junit.jupiter.api.Assertions.assertFalse(auditLogRepository.findByEventType(
+                "CATALOG_PREVIEW", Instant.now().minusSeconds(60), Instant.now().plusSeconds(60)).isEmpty());
+    }
+
+    @Test
+    void catalogPreviewAllowsApprovedApplicant() throws Exception {
+        long catalogId = createCatalogItem("cat-preview-applicant").id();
+        long applicationId = catalogApplicationRepository.create(catalogId, "consumer-a", "reason", "svc-risk").id();
+        catalogApplicationRepository.approve(applicationId, "admin");
+
+        mockMvc.perform(get("/api/v1/catalog/%d/preview".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogApplicantToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sample").isArray());
+    }
+
+    @Test
     void serviceInvokeIsWhitelistedNoToken() throws Exception {
         mockMvc.perform(post("/api/v1/services/nonexistent/invoke")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -181,5 +310,10 @@ class PipelineModuleMockMvcTest {
                         """.formatted(credential.apiKey(), timestamp, signature)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value("{\"status\":\"ok\"}"));
+    }
+
+    private com.platform.pipeline.catalog.DataCatalogItem createCatalogItem(String code) {
+        return catalogService.add(code, "目录资产-" + code, "征信", 1L, "CREDIT", "风控",
+                List.of("name", "idCard", "credential"), "JSON", "DAILY", "TEST", "L2", "内部");
     }
 }

@@ -6,6 +6,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CatalogServiceTest {
     @Test
@@ -20,10 +21,24 @@ class CatalogServiceTest {
     }
 
     @Test
-    void seededCatalogIsQueryable() {
+    void productionConstructorDoesNotSeedCatalog() {
         CatalogService service = new CatalogService();
-        service.add("cat-demo", "示例资产", "征信", 1L, "JSON", "风控", List.of("name"), "JSON", "DAILY", "DEMO", "L2", "内部");
 
-        assertFalse(service.query(null, null, null, null).isEmpty());
+        assertTrue(service.query(null, null, null, null).isEmpty());
+    }
+
+    @Test
+    void previewMasksSensitiveFieldsAndReturnsStats() {
+        CatalogService service = new CatalogService();
+        DataCatalogItem item = service.add("cat-demo", "示例资产", "征信", 1L, "JSON", "风控",
+                List.of("name", "idCard", "credential"), "JSON", "DAILY", "DEMO", "L2", "内部");
+
+        CatalogController.PreviewResult preview = service.preview(item);
+
+        assertEquals(1, preview.sample().size());
+        assertEquals("***MASKED***", preview.sample().get(0).get("idCard"));
+        assertEquals("***MASKED***", preview.sample().get(0).get("credential"));
+        assertEquals(3, preview.stats().get("fieldCount"));
+        assertFalse(preview.qualityReport().isBlank());
     }
 }

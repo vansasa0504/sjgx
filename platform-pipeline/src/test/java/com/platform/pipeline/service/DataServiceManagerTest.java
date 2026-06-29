@@ -41,6 +41,23 @@ class DataServiceManagerTest {
     }
 
     @Test
+    void approvedCatalogGrantFillsPartnerCodeInInvokeLog() {
+        DataServiceManager manager = new DataServiceManager(new ApiCredentialRepository(null, "unit-test-key"));
+        manager.register("svc-partner", "合作方服务", "route-partner");
+        manager.apply("svc-partner", DataServiceEvent.DEFINE);
+        manager.apply("svc-partner", DataServiceEvent.TEST);
+        manager.apply("svc-partner", DataServiceEvent.PUBLISH);
+        manager.grantCatalogPartner("svc-partner", "consumer-a", "partner-1");
+        ApiCredentialRepository.CreatedCredential credential = manager.createCredential("svc-partner", "consumer-a");
+        long timestamp = Instant.now().getEpochSecond();
+        String signature = manager.signatureUtil().sign(credential.apiKey(), credential.secret(), timestamp, "partner-nonce", "{}");
+
+        manager.invoke("svc-partner", null, credential.apiKey(), timestamp, "partner-nonce", "{}", signature);
+
+        assertEquals("partner-1", manager.logWriter().logs().get(0).partnerCode());
+    }
+
+    @Test
     void requestHashIsConsistentBetweenSuccessAndFailureForSameBody() {
         DataServiceManager manager = new DataServiceManager();
         manager.register("svc-hash", "hash service", "route-hash");

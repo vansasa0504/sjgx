@@ -1,5 +1,11 @@
 package com.platform.pipeline.ingest;
 
+import com.platform.common.audit.AuditLogRepository;
+import com.platform.common.audit.InMemoryAuditLogRepository;
+import com.platform.common.audit.JdbcAuditLogRepository;
+import com.platform.pipeline.catalog.CatalogApplicationRepository;
+import com.platform.pipeline.catalog.InMemoryCatalogApplicationRepository;
+import com.platform.pipeline.catalog.JdbcCatalogApplicationRepository;
 import com.platform.pipeline.catalog.CatalogService;
 import com.platform.pipeline.service.ApiCredentialRepository;
 import com.platform.pipeline.service.DataServiceManager;
@@ -30,5 +36,17 @@ public class PipelineApplication {
     @Bean
     CatalogService catalogService(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
         return new CatalogService(jdbcTemplate);
+    }
+
+    @Bean
+    CatalogApplicationRepository catalogApplicationRepository(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate == null
+                ? new InMemoryCatalogApplicationRepository()
+                : new JdbcCatalogApplicationRepository(jdbcTemplate);
+    }
+
+    @Bean
+    AuditLogRepository auditLogRepository(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate == null ? new InMemoryAuditLogRepository() : new JdbcAuditLogRepository(jdbcTemplate);
     }
 }

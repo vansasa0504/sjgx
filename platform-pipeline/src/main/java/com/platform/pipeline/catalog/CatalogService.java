@@ -2,8 +2,10 @@ package com.platform.pipeline.catalog;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import com.platform.common.db.IdGenerator;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
@@ -155,6 +157,56 @@ public class CatalogService {
             }
         }
         return items.stream().filter(i -> i.id() == id).findFirst().orElse(null);
+    }
+
+    public CatalogController.PreviewResult preview(DataCatalogItem item) {
+        Map<String, String> row = new LinkedHashMap<>();
+        for (String field : item.fieldDefinitions()) {
+            row.put(field, sampleValue(field));
+        }
+        List<Map<String, String>> sample = row.isEmpty() ? List.of() : List.of(row);
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("fieldCount", item.fieldDefinitions().size());
+        stats.put("sampleCount", sample.size());
+        stats.put("format", item.format());
+        stats.put("updateFrequency", item.updateFrequency());
+        return new CatalogController.PreviewResult(sample, stats,
+                "字段可读，样例已按目录安全策略脱敏");
+    }
+
+    private String sampleValue(String field) {
+        if (isSensitiveField(field)) {
+            return "***MASKED***";
+        }
+        String normalized = field == null ? "value" : field.toLowerCase();
+        if (normalized.contains("score")) {
+            return "720";
+        }
+        if (normalized.contains("status")) {
+            return "ACTIVE";
+        }
+        if (normalized.contains("date") || normalized.contains("time")) {
+            return "2026-06-28T00:00:00Z";
+        }
+        return "sample_" + (field == null || field.isBlank() ? "value" : field);
+    }
+
+    private boolean isSensitiveField(String field) {
+        if (field == null) {
+            return false;
+        }
+        String normalized = field.toLowerCase();
+        return normalized.contains("credential")
+                || normalized.contains("secret")
+                || normalized.contains("password")
+                || normalized.contains("token")
+                || normalized.contains("api_key")
+                || normalized.contains("apikey")
+                || normalized.contains("idcard")
+                || normalized.contains("identity")
+                || normalized.contains("person_id")
+                || normalized.contains("phone")
+                || normalized.contains("mobile");
     }
 
     private static String toJson(List<String> fields) {

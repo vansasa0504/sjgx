@@ -68,7 +68,8 @@ vi.mock('../../api/catalog', () => ({
   getCatalogMeta: vi.fn(),
   previewCatalog: vi.fn(),
   applyCatalog: vi.fn(),
-  approveApplication: vi.fn()
+  approveApplication: vi.fn(),
+  rejectApplication: vi.fn()
 }))
 vi.mock('../../api/consumer', () => ({
   listConsumers: vi.fn().mockResolvedValue([{ id: 1, name: '消费方A' }]),
@@ -218,6 +219,19 @@ describe('M7-C pages', () => {
     await flushPromises()
     await wrapper.findAll('button').find((button) => button.text().includes('审批申请'))?.trigger('click')
     expect(catalogApi.approveApplication).toHaveBeenCalledWith(99)
+  })
+
+  it('rejects the application created for the selected catalog item', async () => {
+    vi.mocked(catalogApi.applyCatalog).mockResolvedValueOnce({ id: 99 })
+    const wrapper = mount(CatalogView, { global })
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('申请'))?.trigger('click')
+    await wrapper.findComponent({ name: 'FormDialog' }).props('submit')({ reason: '测试', scope: '回归' })
+    await flushPromises()
+    const rejectButton = wrapper.findAll('button').find((button) => button.text().includes('驳回'))
+    expect(rejectButton?.exists()).toBe(true)
+    await rejectButton?.trigger('click')
+    expect(catalogApi.rejectApplication).toHaveBeenCalledWith(99)
   })
 
   it('loads consumers', async () => {

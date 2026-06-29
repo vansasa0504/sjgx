@@ -3,6 +3,7 @@ import axiosMockAdapter from 'axios-mock-adapter'
 import { api } from '../client'
 import { listPartners, createPartner } from '../partner'
 import { listServices, publishService } from '../service'
+import { rejectApplication } from '../catalog'
 
 describe('module api wrappers', () => {
   it('calls partner endpoints with params and body', async () => {
@@ -24,5 +25,15 @@ describe('module api wrappers', () => {
 
     await expect(listServices({ status: 'ONLINE' })).resolves.toEqual([])
     await expect(publishService('svc-1')).resolves.toMatchObject({ serviceCode: 'svc-1' })
+  })
+
+  it('calls catalog reject endpoint', async () => {
+    const mock = new axiosMockAdapter(api)
+    mock.onPost('/catalog/applications/9/reject').reply(200, {
+      success: true,
+      data: { id: 9, status: 'REJECTED' }
+    })
+
+    await expect(rejectApplication(9)).resolves.toMatchObject({ id: 9, status: 'REJECTED' })
   })
 })
