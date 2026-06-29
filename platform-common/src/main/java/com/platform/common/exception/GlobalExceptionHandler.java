@@ -17,7 +17,7 @@ public class GlobalExceptionHandler {
         String code = exception.code();
         HttpStatus status = code.endsWith("401") ? HttpStatus.UNAUTHORIZED
                 : code.endsWith("403") ? HttpStatus.FORBIDDEN
-                : code.endsWith("404") && code.startsWith("CATALOG") ? HttpStatus.NOT_FOUND
+                : code.endsWith("404") && !code.startsWith("AUTH") ? HttpStatus.NOT_FOUND
                 : code.endsWith("409") ? HttpStatus.CONFLICT
                 : HttpStatus.BAD_REQUEST;
         if (status.is5xxServerError()) {

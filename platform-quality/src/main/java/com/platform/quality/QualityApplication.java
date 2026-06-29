@@ -2,6 +2,10 @@ package com.platform.quality;
 
 import com.platform.quality.executor.QualityCheckExecutor;
 import com.platform.quality.issue.QualityIssueService;
+import com.platform.quality.report.InMemoryQualityReportRepository;
+import com.platform.quality.report.JdbcQualityReportRepository;
+import com.platform.quality.report.QualityReportRepository;
+import com.platform.quality.report.QualityReportService;
 import com.platform.quality.rule.InMemoryQualityRuleRepository;
 import com.platform.quality.rule.JdbcQualityRuleRepository;
 import com.platform.quality.rule.QualityRuleRepository;
@@ -44,5 +48,18 @@ public class QualityApplication {
     @Bean
     QualityScoringService qualityScoringService(QualityWeightRepository weightRepository) {
         return new QualityScoringService(weightRepository);
+    }
+
+    @Bean
+    QualityReportRepository qualityReportRepository(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate != null
+                ? new JdbcQualityReportRepository(jdbcTemplate)
+                : new InMemoryQualityReportRepository();
+    }
+
+    @Bean
+    QualityReportService qualityReportService(QualityCheckExecutor checkExecutor,
+                                              QualityReportRepository reportRepository) {
+        return new QualityReportService(checkExecutor, reportRepository);
     }
 }

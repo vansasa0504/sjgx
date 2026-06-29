@@ -21,7 +21,9 @@ class GlobalExceptionHandlerTest {
                 handler.handleBusinessException(new BusinessException("CATALOG_APP-409", "reviewed")).getStatusCode());
         assertEquals(HttpStatus.BAD_REQUEST,
                 handler.handleBusinessException(new BusinessException("AUTH-404", "api key missing")).getStatusCode());
-        assertEquals(HttpStatus.BAD_REQUEST,
+        assertEquals(HttpStatus.NOT_FOUND,
                 handler.handleBusinessException(new BusinessException("QUALITY-404", "rule missing")).getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND,
+                handler.handleBusinessException(new BusinessException("QUALITY_REPORT-404", "report missing")).getStatusCode());
     }
 }

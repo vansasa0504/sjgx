@@ -142,8 +142,8 @@ class PartnerModuleMockMvcTest {
     }
 
     @Test
-    void consumerDetailNotFoundReturns400() throws Exception {
+    void consumerDetailNotFoundReturns404() throws Exception {
         mockMvc.perform(get("/api/v1/consumers/99999").header("Authorization", "Bearer " + adminToken()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
     }
 }

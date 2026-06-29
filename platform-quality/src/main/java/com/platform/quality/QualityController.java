@@ -3,18 +3,25 @@ package com.platform.quality;
 import com.platform.common.exception.BusinessException;
 import com.platform.common.model.Result;
 import com.platform.common.security.RequirePermission;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.quality.executor.QualityCheckExecutor;
 import com.platform.quality.executor.QualityCheckResult;
 import com.platform.quality.issue.QualityIssue;
 import com.platform.quality.issue.QualityIssueService;
-import com.platform.quality.report.QualityReport;
+import com.platform.quality.report.QualityReportRecord;
+import com.platform.quality.report.QualityReportService;
 import com.platform.quality.rule.QualityDimension;
 import com.platform.quality.rule.QualityRuleConfig;
 import com.platform.quality.rule.QualityRuleRepository;
 import com.platform.quality.scoring.QualityScore;
 import com.platform.quality.scoring.QualityScoringService;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,17 +34,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/quality")
 public class QualityController {
+    private static final ObjectMapper MAPPER = new ObjectMapper().registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule()).disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private final QualityRuleRepository ruleRepository;
     private final QualityCheckExecutor checkExecutor;
     private final QualityIssueService issueService;
     private final QualityScoringService scoringService;
+    private final QualityReportService reportService;
 
     public QualityController(QualityRuleRepository ruleRepository, QualityCheckExecutor checkExecutor,
-                             QualityIssueService issueService, QualityScoringService scoringService) {
+                             QualityIssueService issueService, QualityScoringService scoringService,
+                             QualityReportService reportService) {
         this.ruleRepository = ruleRepository;
         this.checkExecutor = checkExecutor;
         this.issueService = issueService;
         this.scoringService = scoringService;
+        this.reportService = reportService;
     }
 
     @PostMapping("/rules")
@@ -94,10 +105,35 @@ public class QualityController {
         return Result.ok(issueService.resolve(id, request.resolution()));
     }
 
+    @PostMapping("/reports/generate")
+    @RequirePermission("quality:run")
+    public Result<QualityReportRecord> generateReport(@RequestBody GenerateReportRequest request) {
+        Instant from = parseInstant(request.from());
+        Instant to = parseInstant(request.to());
+        return Result.ok(reportService.generate(request.dimension(), request.dimensionValue(), from, to));
+    }
+
     @GetMapping("/reports")
     @RequirePermission("quality:view")
-    public Result<QualityReport> report(@RequestParam(required = false, defaultValue = "ALL") String partnerId) {
-        return Result.ok(QualityReport.from(partnerId, checkExecutor.history()));
+    public Result<List<QualityReportRecord>> listReports(@RequestParam(required = false) String dimension) {
+        return Result.ok(reportService.list(dimension));
+    }
+
+    @GetMapping("/reports/{id}")
+    @RequirePermission("quality:view")
+    public Result<QualityReportRecord> reportDetail(@PathVariable long id) {
+        return Result.ok(reportService.detail(id));
+    }
+
+    @GetMapping("/reports/{id}/export")
+    @RequirePermission("quality:view")
+    public ResponseEntity<byte[]> exportReport(@PathVariable long id) {
+        QualityReportRecord report = reportService.export(id);
+        String json = serializeReport(report);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=quality-report-" + id + ".json");
+        return ResponseEntity.ok().headers(headers).body(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     @GetMapping("/scores")
@@ -110,6 +146,25 @@ public class QualityController {
         }
         QualityCheckResult latest = history.get(history.size() - 1);
         return Result.ok(scoringService.score(latest, configs));
+    }
+
+    private Instant parseInstant(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeException ex) {
+            throw new BusinessException("QUALITY_REPORT-400", "invalid timestamp: " + value);
+        }
+    }
+
+    private String serializeReport(QualityReportRecord report) {
+        try {
+            return MAPPER.writeValueAsString(report);
+        } catch (Exception ex) {
+            throw new BusinessException("QUALITY_REPORT-500", "failed to serialize report");
+        }
     }
 
     public record CreateRuleRequest(String ruleCode, QualityDimension dimension, String field,
@@ -127,5 +182,8 @@ public class QualityController {
     }
 
     public record ResolveRequest(String resolution) {
+    }
+
+    public record GenerateReportRequest(String dimension, String dimensionValue, String from, String to) {
     }
 }

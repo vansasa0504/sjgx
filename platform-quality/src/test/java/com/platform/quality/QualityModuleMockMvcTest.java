@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import com.jayway.jsonpath.JsonPath;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
@@ -81,7 +82,7 @@ class QualityModuleMockMvcTest {
                 .header("Authorization", "Bearer " + adminToken())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"batchNo\":\"B1\",\"ruleIds\":[99999],\"rows\":[],\"failRateThreshold\":0.1}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -95,4 +96,74 @@ class QualityModuleMockMvcTest {
         mockMvc.perform(get("/api/v1/quality/issues"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void reportGenerateWithAdminToken() throws Exception {
+        mockMvc.perform(post("/api/v1/quality/reports/generate")
+                .header("Authorization", "Bearer " + adminToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dimension\":\"PARTNER\",\"dimensionValue\":\"p1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dimension").value("PARTNER"));
+    }
+
+    @Test
+    void reportGenerateNoToken() throws Exception {
+        mockMvc.perform(post("/api/v1/quality/reports/generate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dimension\":\"PARTNER\",\"dimensionValue\":\"p1\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void reportGenerateInsufficientPermission() throws Exception {
+        mockMvc.perform(post("/api/v1/quality/reports/generate")
+                .header("Authorization", "Bearer " + viewerToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dimension\":\"PARTNER\",\"dimensionValue\":\"p1\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void reportListWithAdminToken() throws Exception {
+        mockMvc.perform(get("/api/v1/quality/reports").header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
+    void reportListNoToken() throws Exception {
+        mockMvc.perform(get("/api/v1/quality/reports"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void reportDetailNotFoundReturns404() throws Exception {
+        mockMvc.perform(get("/api/v1/quality/reports/99999")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void reportExportWithAdminToken() throws Exception {
+        String response = mockMvc.perform(post("/api/v1/quality/reports/generate")
+                .header("Authorization", "Bearer " + adminToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dimension\":\"SERVICE\",\"dimensionValue\":\"svc-a\"}"))
+                .andReturn().getResponse().getContentAsString();
+        long reportId = ((Number) JsonPath.read(response, "$.data.id")).longValue();
+
+        mockMvc.perform(get("/api/v1/quality/reports/" + reportId + "/export")
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("dimension")));
+    }
+
+    @Test
+    void reportExportNoToken() throws Exception {
+        mockMvc.perform(get("/api/v1/quality/reports/1/export"))
+                .andExpect(status().isUnauthorized());
+    }
+
 }
