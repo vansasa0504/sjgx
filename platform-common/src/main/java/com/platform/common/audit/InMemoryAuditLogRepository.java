@@ -11,9 +11,11 @@ public class InMemoryAuditLogRepository implements AuditLogRepository {
 
     @Override
     public AuditEvent append(AuditEvent event) {
+        String prevHash = events.isEmpty() ? "" : events.get(events.size() - 1).hash();
+        String hash = AuditHashing.hash(prevHash, event);
         AuditEvent saved = new AuditEvent(ids.getAndIncrement(), event.traceId(), event.eventType(), event.actorType(),
                 event.actorId(), event.targetType(), event.targetId(), event.action(), event.detail(),
-                event.sourceIp(), event.userAgent(), event.status(), event.createdAt());
+                event.sourceIp(), event.userAgent(), event.status(), event.createdAt(), prevHash, hash);
         events.add(saved);
         return saved;
     }
@@ -36,5 +38,27 @@ public class InMemoryAuditLogRepository implements AuditLogRepository {
                 .filter(event -> event.eventType().equals(eventType))
                 .filter(event -> !event.createdAt().isBefore(from) && !event.createdAt().isAfter(to))
                 .toList();
+    }
+
+    @Override
+    public AuditChainVerification verify() {
+        String previousHash = "";
+        long checked = 0;
+        for (AuditEvent event : events) {
+            if (event.hash() == null || event.hash().isBlank()) {
+                previousHash = "";
+                continue;
+            }
+            if (!previousHash.equals(event.prevHash())) {
+                return AuditChainVerification.broken(checked + 1, event.id(), "prev_mismatch");
+            }
+            String expected = AuditHashing.hash(event.prevHash(), event);
+            if (!expected.equals(event.hash())) {
+                return AuditChainVerification.broken(checked + 1, event.id(), "hash_mismatch");
+            }
+            previousHash = event.hash();
+            checked++;
+        }
+        return AuditChainVerification.intact(checked);
     }
 }

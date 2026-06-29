@@ -105,7 +105,8 @@ vi.mock('../../api/billing', () => ({
 vi.mock('../../api/stats', () => ({
   fetchDashboard: vi.fn().mockResolvedValue({ invokeCount: 10, successRate: '99%', runningServices: 3, complianceScore: 98, costAmount: 12 }),
   generateReport: vi.fn().mockResolvedValue({ file: 'report.xlsx' }),
-  listAudit: vi.fn().mockResolvedValue([{ traceId: 't1', eventType: 'login' }])
+  listAudit: vi.fn().mockResolvedValue([{ traceId: 't1', eventType: 'login' }]),
+  verifyAudit: vi.fn().mockResolvedValue({ intact: true, totalChecked: 1 })
 }))
 vi.mock('../../api/system', () => ({
   listUsers: vi.fn().mockResolvedValue({ records: [{ username: 'admin', permissions: ['system:view'] }], total: 1, current: 1, size: 10 }),

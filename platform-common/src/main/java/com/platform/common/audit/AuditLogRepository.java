@@ -12,6 +12,8 @@ public interface AuditLogRepository {
 
     List<AuditEvent> findByEventType(String eventType, Instant from, Instant to);
 
+    AuditChainVerification verify();
+
     default void update(AuditEvent event) {
         throw new UnsupportedOperationException("audit log is append-only");
     }

@@ -87,6 +87,7 @@ public class CatalogController {
         requireItem(id);
         String applicant = actorId(currentPrincipal());
         CatalogApplication application = applicationRepository.create(id, applicant, request.reason(), request.scope());
+        appendApplicationAudit("CATALOG_APPLY", application, applicant, AuditStatus.SUCCESS);
         return Result.ok(application);
     }
 
@@ -101,6 +102,7 @@ public class CatalogController {
         if (dataServiceManager != null && approved.scope() != null && !approved.scope().isBlank()) {
             dataServiceManager.grantCatalogPartner(approved.scope(), approved.applicant(), String.valueOf(item.partnerId()));
         }
+        appendApplicationAudit("CATALOG_APPROVE", approved, approver, AuditStatus.SUCCESS);
         return Result.ok(approved);
     }
 
@@ -151,6 +153,27 @@ public class CatalogController {
                 request == null ? "" : request.getRemoteAddr(),
                 request == null ? "" : request.getHeader("User-Agent"),
                 AuditStatus.SUCCESS, Instant.now()));
+    }
+
+    private void appendApplicationAudit(String eventType, CatalogApplication application, String actorId, AuditStatus status) {
+        if (auditLogRepository == null) {
+            return;
+        }
+        HttpServletRequest request = currentRequest();
+        auditLogRepository.append(new AuditEvent(null, traceId(request), eventType, "USER", actorId,
+                "CATALOG_APPLICATION", String.valueOf(application.id()), application.status(),
+                "catalogId=%d,scope=%s,applicant=%s".formatted(application.catalogId(), application.scope(), application.applicant()),
+                request == null ? "" : request.getRemoteAddr(),
+                request == null ? "" : request.getHeader("User-Agent"),
+                status, Instant.now()));
+    }
+
+    private String traceId(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String traceId = request.getHeader("X-Trace-Id");
+        return traceId == null || traceId.isBlank() ? null : traceId;
     }
 
     private HttpServletRequest currentRequest() {

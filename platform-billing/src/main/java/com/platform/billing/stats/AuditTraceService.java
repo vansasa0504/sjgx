@@ -1,6 +1,7 @@
 package com.platform.billing.stats;
 
 import com.platform.common.audit.AuditEvent;
+import com.platform.common.audit.AuditChainVerification;
 import com.platform.common.audit.AuditLogRepository;
 import java.time.Instant;
 import java.util.List;
@@ -22,5 +23,9 @@ public class AuditTraceService {
 
     public List<AuditEvent> byEventType(String eventType, Instant from, Instant to) {
         return repository.findByEventType(eventType, from, to);
+    }
+
+    public AuditChainVerification verify() {
+        return repository.verify();
     }
 }

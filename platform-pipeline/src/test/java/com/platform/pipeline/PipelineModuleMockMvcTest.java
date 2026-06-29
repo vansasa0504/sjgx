@@ -191,6 +191,32 @@ class PipelineModuleMockMvcTest {
     }
 
     @Test
+    void catalogApplyApprovePropagatesTraceIdToAuditEvents() throws Exception {
+        long catalogId = createCatalogItem("cat-trace").id();
+        String traceId = "trace-catalog-apply-approve";
+
+        String response = mockMvc.perform(post("/api/v1/catalog/%d/apply".formatted(catalogId))
+                .header("Authorization", "Bearer " + catalogApplicantToken())
+                .header("X-Trace-Id", traceId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"风控准入\",\"scope\":\"svc-risk\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long applicationId = ((Number) com.jayway.jsonpath.JsonPath.read(response, "$.data.id")).longValue();
+
+        mockMvc.perform(post("/api/v1/catalog/applications/%d/approve".formatted(applicationId))
+                .header("Authorization", "Bearer " + adminToken())
+                .header("X-Trace-Id", traceId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+
+        List<com.platform.common.audit.AuditEvent> events = auditLogRepository.findByTraceId(traceId);
+        org.junit.jupiter.api.Assertions.assertEquals(2, events.size());
+        org.junit.jupiter.api.Assertions.assertEquals("CATALOG_APPLY", events.get(0).eventType());
+        org.junit.jupiter.api.Assertions.assertEquals("CATALOG_APPROVE", events.get(1).eventType());
+    }
+
+    @Test
     void catalogRejectRequiresPermissionAndTransitionsState() throws Exception {
         long catalogId = createCatalogItem("cat-reject").id();
         long applicationId = catalogApplicationRepository.create(catalogId, "consumer-a", "reason", "svc-risk").id();

@@ -23,6 +23,7 @@ class MigrationDialectCompatibilityTest {
 
         assertContractCrud(jdbcTemplate);
         assertColumnType(jdbcTemplate, "T_API_CREDENTIAL", "ENABLED", "TINYINT");
+        assertColumnType(jdbcTemplate, "T_AUDIT_LOG", "HASH", "CHARACTER VARYING");
     }
 
     @Test
@@ -32,6 +33,7 @@ class MigrationDialectCompatibilityTest {
         assertContractCrud(jdbcTemplate);
         assertColumnType(jdbcTemplate, "T_API_CREDENTIAL", "ENABLED", "SMALLINT");
         assertColumnType(jdbcTemplate, "T_RAW_DATA", "PAYLOAD", "CHARACTER LARGE OBJECT");
+        assertColumnType(jdbcTemplate, "T_AUDIT_LOG", "HASH", "CHARACTER VARYING");
     }
 
     @Test
@@ -97,6 +99,13 @@ class MigrationDialectCompatibilityTest {
                 (id, task_id, partner_id, batch_no, payload, quality_status, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, 1L, 10L, 20L, "batch-a", "{\"name\":\"alpha\"}", "PASS");
+        jdbcTemplate.update("""
+                INSERT INTO t_audit_log
+                (id, trace_id, event_type, actor_type, actor_id, target_type, target_id, action,
+                 detail, status, created_at, prev_hash, hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+                """, 1L, "trace-a", "BILL", "USER", "u1", "BILL", "b1", "CREATE",
+                "detail", "SUCCESS", "", "abc123");
 
         Map<String, Object> invokeLog = jdbcTemplate.queryForMap("""
                 SELECT service_code, consumer_code, status_code, response_size
@@ -113,6 +122,7 @@ class MigrationDialectCompatibilityTest {
         assertEquals(new BigDecimal("1.2500"),
                 jdbcTemplate.queryForObject("SELECT amount FROM t_bill_item WHERE id = ?", BigDecimal.class, 1L));
         assertPayload(jdbcTemplate.queryForObject("SELECT payload FROM t_raw_data WHERE id = ?", Object.class, 1L));
+        assertEquals("abc123", jdbcTemplate.queryForObject("SELECT hash FROM t_audit_log WHERE id = ?", String.class, 1L));
     }
 
     private void assertPayload(Object payload) {

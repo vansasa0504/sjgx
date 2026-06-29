@@ -17,7 +17,9 @@ public record AuditEvent(
         String sourceIp,
         String userAgent,
         AuditStatus status,
-        Instant createdAt
+        Instant createdAt,
+        String prevHash,
+        String hash
 ) {
     public AuditEvent {
         traceId = Objects.requireNonNullElseGet(traceId, () -> UUID.randomUUID().toString());
@@ -32,6 +34,23 @@ public record AuditEvent(
         userAgent = Objects.requireNonNullElse(userAgent, "");
         status = Objects.requireNonNullElse(status, AuditStatus.SUCCESS);
         createdAt = Objects.requireNonNullElseGet(createdAt, Instant::now);
+    }
+
+    public AuditEvent(Long id,
+                      String traceId,
+                      String eventType,
+                      String actorType,
+                      String actorId,
+                      String targetType,
+                      String targetId,
+                      String action,
+                      String detail,
+                      String sourceIp,
+                      String userAgent,
+                      AuditStatus status,
+                      Instant createdAt) {
+        this(id, traceId, eventType, actorType, actorId, targetType, targetId, action, detail,
+                sourceIp, userAgent, status, createdAt, null, null);
     }
 
     public static AuditEvent system(String eventType, String action, String detail, AuditStatus status) {

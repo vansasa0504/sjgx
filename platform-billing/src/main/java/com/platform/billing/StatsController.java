@@ -8,6 +8,7 @@ import com.platform.billing.report.ReportType;
 import com.platform.billing.stats.AuditTraceService;
 import com.platform.billing.stats.StatsSnapshotRepository;
 import com.platform.common.log.JdbcServiceInvokeLogRepository;
+import com.platform.common.audit.AuditChainVerification;
 import com.platform.common.audit.AuditEvent;
 import com.platform.common.model.Result;
 import com.platform.common.security.RequirePermission;
@@ -65,13 +66,23 @@ public class StatsController {
     @GetMapping("/audit")
     @RequirePermission("stats:view")
     public Result<List<AuditEvent>> audit(@RequestParam(required = false) String eventType,
+                                          @RequestParam(required = false) String traceId,
                                           @RequestParam(required = false) Instant from,
                                           @RequestParam(required = false) Instant to) {
+        if (traceId != null && !traceId.isBlank()) {
+            return Result.ok(auditTraceService.byTrace(traceId));
+        }
         Instant start = from == null ? Instant.EPOCH : from;
         Instant end = to == null ? Instant.now() : to;
         if (eventType == null || eventType.isBlank()) {
             return Result.ok(List.of());
         }
         return Result.ok(auditTraceService.byEventType(eventType, start, end));
+    }
+
+    @GetMapping("/audit/verify")
+    @RequirePermission("stats:view")
+    public Result<AuditChainVerification> verifyAudit() {
+        return Result.ok(auditTraceService.verify());
     }
 }
