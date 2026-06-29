@@ -100,6 +100,11 @@ class MigrationDialectCompatibilityTest {
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, 1L, 10L, 20L, "batch-a", "{\"name\":\"alpha\"}", "PASS");
         jdbcTemplate.update("""
+                INSERT INTO t_ingest_checkpoint
+                (id, task_id, connector_type, offset_value, checkpoint_json, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, 1L, 10L, "HTTP", 3L, "{\"offset\":3}");
+        jdbcTemplate.update("""
                 INSERT INTO t_audit_log
                 (id, trace_id, event_type, actor_type, actor_id, target_type, target_id, action,
                  detail, status, created_at, prev_hash, hash)
@@ -122,6 +127,9 @@ class MigrationDialectCompatibilityTest {
         assertEquals(new BigDecimal("1.2500"),
                 jdbcTemplate.queryForObject("SELECT amount FROM t_bill_item WHERE id = ?", BigDecimal.class, 1L));
         assertPayload(jdbcTemplate.queryForObject("SELECT payload FROM t_raw_data WHERE id = ?", Object.class, 1L));
+        assertEquals(3L, jdbcTemplate.queryForObject(
+                "SELECT offset_value FROM t_ingest_checkpoint WHERE task_id = ? AND connector_type = ?",
+                Long.class, 10L, "HTTP"));
         assertEquals("abc123", jdbcTemplate.queryForObject("SELECT hash FROM t_audit_log WHERE id = ?", String.class, 1L));
     }
 

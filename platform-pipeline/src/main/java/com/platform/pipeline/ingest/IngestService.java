@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import com.platform.common.db.IdGenerator;
+import com.platform.pipeline.ingest.sync.InMemoryOffsetStore;
+import com.platform.pipeline.ingest.sync.OffsetStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 public class IngestService {
@@ -22,12 +24,14 @@ public class IngestService {
     private final Map<Long, IngestTask> tasks = new ConcurrentHashMap<>();
     private final ProtocolAdapter adapter;
     private final Map<String, ProtocolAdapter> adapters;
+    private final Map<String, SourceConnector> connectors;
     private final FormatConverter converter;
     private final RawDataRepository repository;
     private final IngestQualityGuard qualityGuard;
     private final IngestTaskStateMachine stateMachine = new IngestTaskStateMachine();
     private final JdbcTemplate jdbcTemplate;
     private final IdGenerator idGenerator;
+    private final OffsetStore offsetStore;
 
     public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository) {
         this(adapter, converter, repository, IngestQualityGuard.disabled());
@@ -39,9 +43,17 @@ public class IngestService {
 
     public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository,
                          IngestQualityGuard qualityGuard, JdbcTemplate jdbcTemplate) {
+        this(adapter, converter, repository, qualityGuard, jdbcTemplate, new InMemoryOffsetStore());
+    }
+
+    public IngestService(ProtocolAdapter adapter, FormatConverter converter, RawDataRepository repository,
+                         IngestQualityGuard qualityGuard, JdbcTemplate jdbcTemplate, OffsetStore offsetStore) {
         this.adapter = adapter;
         this.adapters = new HashMap<>();
         this.adapters.put(adapter.protocol().toUpperCase(Locale.ROOT), adapter);
+        this.offsetStore = offsetStore == null ? new InMemoryOffsetStore() : offsetStore;
+        this.connectors = new HashMap<>();
+        this.connectors.put(adapter.protocol().toUpperCase(Locale.ROOT), connector(adapter));
         this.converter = converter;
         this.repository = repository;
         this.qualityGuard = qualityGuard;
@@ -52,8 +64,18 @@ public class IngestService {
     public IngestService(Collection<ProtocolAdapter> adapters, ProtocolAdapter defaultAdapter,
                          FormatConverter converter, RawDataRepository repository,
                          IngestQualityGuard qualityGuard, JdbcTemplate jdbcTemplate) {
-        this(defaultAdapter, converter, repository, qualityGuard, jdbcTemplate);
-        adapters.forEach(candidate -> this.adapters.put(candidate.protocol().toUpperCase(Locale.ROOT), candidate));
+        this(adapters, defaultAdapter, converter, repository, qualityGuard, jdbcTemplate, new InMemoryOffsetStore());
+    }
+
+    public IngestService(Collection<ProtocolAdapter> adapters, ProtocolAdapter defaultAdapter,
+                         FormatConverter converter, RawDataRepository repository,
+                         IngestQualityGuard qualityGuard, JdbcTemplate jdbcTemplate, OffsetStore offsetStore) {
+        this(defaultAdapter, converter, repository, qualityGuard, jdbcTemplate, offsetStore);
+        adapters.forEach(candidate -> {
+            String key = candidate.protocol().toUpperCase(Locale.ROOT);
+            this.adapters.put(key, candidate);
+            this.connectors.put(key, connector(candidate));
+        });
     }
 
     private boolean useDb() {
@@ -108,9 +130,24 @@ public class IngestService {
 
     public IngestTask apply(long taskId, IngestTaskEvent event) {
         IngestTask task = requireTask(taskId);
+        if (event == IngestTaskEvent.APPROVE) {
+            validateApproval(task);
+        }
         task.status(stateMachine.transit(task.status(), event));
         persistTask(task);
         return task;
+    }
+
+    public List<ConnectorSpec> connectorSpecs() {
+        return connectors.values().stream()
+                .map(SourceConnector::spec)
+                .sorted(Comparator.comparing(ConnectorSpec::protocol))
+                .toList();
+    }
+
+    public ConnectorCheckResult check(long taskId) {
+        IngestTask task = requireTask(taskId);
+        return connectorFor(task.endpoint(), task.protocol()).check(task.endpoint());
     }
 
     public Page<RawDataRecord> records(Long taskId, int page, int size) {
@@ -127,13 +164,17 @@ public class IngestService {
     public List<RawDataRecord> testAndIngest(IngestTask task) {
         try {
             transition(task, IngestTaskEvent.START_TEST);
-            String payload = adapterFor(task.endpoint(), task.protocol()).fetch(task.endpoint());
+            SourceConnector connector = connectorFor(task.endpoint(), task.protocol());
+            long offset = offsetStore.get(AbstractSourceConnector.checkpointKey(task.id(), connector.protocol()));
+            RawDataBatch batch = connector.read(task.endpoint(), offset, 1000);
+            String payload = payload(batch);
             List<Map<String, String>> converted = converter.convert(payload);
             qualityGuard.validate(converted);
             List<RawDataRecord> records = converted.stream()
                     .map(row -> new RawDataRecord(task.id(), task.partnerId(), row, Instant.now()))
                     .toList();
             repository.saveAll(records);
+            connector.checkpoint(task.id(), batch.nextOffset());
             transition(task, IngestTaskEvent.SUBMIT_APPROVAL);
             transition(task, IngestTaskEvent.APPROVE);
             return records;
@@ -213,6 +254,9 @@ public class IngestService {
         if (ruleConfig != null && !ruleConfig.isBlank()) {
             task.qualityRules(java.util.Arrays.stream(ruleConfig.split(",")).filter(s -> !s.isBlank()).toList());
         }
+        if (mappingConfig != null && !mappingConfig.isBlank() && !"{}".equals(mappingConfig)) {
+            task.fieldMapping(Map.of("stored", mappingConfig));
+        }
         task.status(IngestTaskStatus.valueOf(status));
         return task;
     }
@@ -225,4 +269,39 @@ public class IngestService {
         return adapters.getOrDefault(key.toUpperCase(Locale.ROOT), adapter);
     }
 
+    private SourceConnector connectorFor(URI endpoint, String protocol) {
+        String key = protocol == null || protocol.isBlank() ? endpoint.getScheme() : protocol;
+        if (key == null || key.isBlank()) {
+            return connectors.get(adapter.protocol().toUpperCase(Locale.ROOT));
+        }
+        return connectors.getOrDefault(key.toUpperCase(Locale.ROOT), connectors.get(adapter.protocol().toUpperCase(Locale.ROOT)));
+    }
+
+    private SourceConnector connector(ProtocolAdapter adapter) {
+        ConnectorSpec spec = ConnectorSpecs.forProtocol(adapter.protocol());
+        return new AbstractSourceConnector(adapter, spec, offsetStore);
+    }
+
+    private void validateApproval(IngestTask task) {
+        ConnectorCheckResult check = connectorFor(task.endpoint(), task.protocol()).check(task.endpoint());
+        if (!check.ok()) {
+            throw new BusinessException("INGEST-CONNECT-FAILED", check.message());
+        }
+        if (task.fieldMapping().isEmpty()) {
+            throw new BusinessException("INGEST-MAPPING-MISSING", "field mapping is required before approval");
+        }
+        if (task.qualityRules().isEmpty()) {
+            throw new BusinessException("INGEST-RULE-MISSING", "quality rules are required before approval");
+        }
+    }
+
+    private String payload(RawDataBatch batch) {
+        if (batch.records().isEmpty()) {
+            return "[]";
+        }
+        if (batch.records().size() == 1) {
+            return batch.records().get(0);
+        }
+        return "[" + String.join(",", batch.records()) + "]";
+    }
 }

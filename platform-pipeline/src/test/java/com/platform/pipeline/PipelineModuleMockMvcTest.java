@@ -93,6 +93,43 @@ class PipelineModuleMockMvcTest {
     }
 
     @Test
+    void connectorMatrixRequiresPermissionAndReturnsEightProtocols() throws Exception {
+        mockMvc.perform(get("/api/v1/ingest/connectors"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/ingest/connectors").header("Authorization", "Bearer " + viewerToken()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/ingest/connectors").header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(8))
+                .andExpect(jsonPath("$.data[?(@.protocol=='HTTP')]").isArray())
+                .andExpect(jsonPath("$.data[?(@.protocol=='DB')]").isArray());
+    }
+
+    @Test
+    void connectorCheckRequiresCreatePermissionAndReportsFailureAsClientError() throws Exception {
+        String response = mockMvc.perform(post("/api/v1/ingest/tasks")
+                .header("Authorization", "Bearer " + adminToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"partnerId\":1,\"endpoint\":\"http://127.0.0.1:1/data\",\"syncMode\":\"FULL\",\"cron\":\"\",\"fieldMapping\":{\"id\":\"id\"},\"qualityRules\":[\"required-id\"]}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long taskId = ((Number) com.jayway.jsonpath.JsonPath.read(response, "$.data.id")).longValue();
+
+        mockMvc.perform(post("/api/v1/ingest/tasks/%d/check".formatted(taskId)))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/ingest/tasks/%d/check".formatted(taskId))
+                .header("Authorization", "Bearer " + viewerToken()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/ingest/tasks/%d/check".formatted(taskId))
+                .header("Authorization", "Bearer " + adminToken()))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
     void serviceListWithAdminToken() throws Exception {
         mockMvc.perform(get("/api/v1/services").header("Authorization", "Bearer " + adminToken()))
                 .andExpect(status().isOk());

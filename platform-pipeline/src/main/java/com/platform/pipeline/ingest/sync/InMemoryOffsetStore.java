@@ -10,5 +10,7 @@ public class InMemoryOffsetStore implements OffsetStore {
     public long get(String key) { return offsets.getOrDefault(key, 0L); }
 
     @Override
-    public void put(String key, long offset) { offsets.put(key, offset); }
+    public void put(String key, long offset) {
+        offsets.merge(key, offset, Math::max);
+    }
 }

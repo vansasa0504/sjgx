@@ -2,6 +2,7 @@ package com.platform.pipeline.ingest;
 
 import com.platform.common.model.Page;
 import com.platform.common.model.Result;
+import com.platform.common.exception.BusinessException;
 import com.platform.common.security.RequirePermission;
 import java.net.URI;
 import java.util.List;
@@ -60,6 +61,16 @@ public class IngestController {
     @RequirePermission("ingest:update")
     public Result<List<RawDataRecord>> run(@PathVariable long id) {
         return Result.ok(ingestService.run(id));
+    }
+
+    @PostMapping("/{id}/check")
+    @RequirePermission("ingest:create")
+    public Result<ConnectorCheckResult> check(@PathVariable long id) {
+        ConnectorCheckResult check = ingestService.check(id);
+        if (!check.ok()) {
+            throw new BusinessException("INGEST-CONNECT-FAILED", check.message());
+        }
+        return Result.ok(check);
     }
 
     @PostMapping("/{id}/submit")

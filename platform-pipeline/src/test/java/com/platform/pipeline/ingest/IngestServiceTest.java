@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class IngestServiceTest {
@@ -33,7 +34,7 @@ class IngestServiceTest {
             RawDataRepository repository = new RawDataRepository();
             IngestService service = new IngestService(new HttpAdapter(), new JsonConverter(), repository);
             URI endpoint = URI.create("http://localhost:" + server.getAddress().getPort() + "/data");
-            IngestTask task = service.createTask(1L, endpoint);
+            IngestTask task = service.createTask(1L, endpoint, "FULL", null, Map.of("id", "id"), List.of("required-id"));
 
             service.testAndIngest(task);
 
@@ -61,7 +62,8 @@ class IngestServiceTest {
             IngestController controller = new IngestController(service);
             String endpoint = "http://localhost:" + server.getAddress().getPort() + "/data";
 
-            IngestTask task = controller.create(new IngestController.CreateIngestTaskRequest(1L, endpoint, null, null, null, null)).data();
+            IngestTask task = controller.create(new IngestController.CreateIngestTaskRequest(1L, endpoint, "FULL", null,
+                    Map.of("id", "id"), List.of("required-id"))).data();
             controller.run(task.id());
 
             assertEquals(1, controller.records(null, 1, 10).data().records().size());
@@ -89,7 +91,8 @@ class IngestServiceTest {
         IngestQualityGuard guard = new IngestQualityGuard(new QualityCheckExecutor(),
                 List.of(new QualityRuleConfig("required-id", QualityDimension.COMPLETENESS, "id", Map.of(), 100)), 0.0);
         IngestService service = new IngestService(adapter, converter, repository, guard);
-        IngestTask task = service.createTask(1L, URI.create("mock://quality"));
+        IngestTask task = service.createTask(1L, URI.create("mock://quality"), "FULL", null,
+                Map.of("id", "id"), List.of("required-id"));
 
         assertThrows(BusinessException.class, () -> service.testAndIngest(task));
         assertEquals(0, repository.findAll().size());
@@ -120,6 +123,52 @@ class IngestServiceTest {
         assertEquals(IngestTaskStatus.OFFLINE, machine.transit(IngestTaskStatus.ONLINE, IngestTaskEvent.OFFLINE));
         assertThrows(BusinessException.class, () -> machine.transit(IngestTaskStatus.DRAFT, IngestTaskEvent.APPROVE));
     }
+
+    @Test
+    void approvalRequiresSuccessfulCheckMappingAndRules() {
+        ProtocolAdapter adapter = new ProtocolAdapter() {
+            @Override
+            public String protocol() {
+                return "MOCK";
+            }
+
+            @Override
+            public String fetch(URI endpoint) {
+                if ("bad".equals(endpoint.getHost())) {
+                    throw new IllegalStateException("unavailable");
+                }
+                return "[]";
+            }
+        };
+        IngestService service = new IngestService(adapter, new JsonConverter(), new RawDataRepository());
+
+        IngestTask noMapping = service.createTask(1L, URI.create("mock://ok"), "FULL", null, Map.of(), List.of("rule"));
+        service.apply(noMapping.id(), IngestTaskEvent.START_TEST);
+        service.apply(noMapping.id(), IngestTaskEvent.SUBMIT_APPROVAL);
+        BusinessException missingMapping = assertThrows(BusinessException.class,
+                () -> service.apply(noMapping.id(), IngestTaskEvent.APPROVE));
+        assertEquals("INGEST-MAPPING-MISSING", missingMapping.code());
+
+        IngestTask noRules = service.createTask(1L, URI.create("mock://ok"), "FULL", null, Map.of("id", "id"), List.of());
+        service.apply(noRules.id(), IngestTaskEvent.START_TEST);
+        service.apply(noRules.id(), IngestTaskEvent.SUBMIT_APPROVAL);
+        BusinessException missingRules = assertThrows(BusinessException.class,
+                () -> service.apply(noRules.id(), IngestTaskEvent.APPROVE));
+        assertEquals("INGEST-RULE-MISSING", missingRules.code());
+
+        IngestTask badConnection = service.createTask(1L, URI.create("mock://bad"), "FULL", null,
+                Map.of("id", "id"), List.of("rule"));
+        service.apply(badConnection.id(), IngestTaskEvent.START_TEST);
+        service.apply(badConnection.id(), IngestTaskEvent.SUBMIT_APPROVAL);
+        BusinessException failedCheck = assertThrows(BusinessException.class,
+                () -> service.apply(badConnection.id(), IngestTaskEvent.APPROVE));
+        assertEquals("INGEST-CONNECT-FAILED", failedCheck.code());
+
+        IngestTask valid = service.createTask(1L, URI.create("mock://ok"), "FULL", null,
+                Map.of("id", "id"), List.of("rule"));
+        service.apply(valid.id(), IngestTaskEvent.START_TEST);
+        service.apply(valid.id(), IngestTaskEvent.SUBMIT_APPROVAL);
+        assertEquals(IngestTaskStatus.ONLINE, service.apply(valid.id(), IngestTaskEvent.APPROVE).status());
+        assertTrue(service.check(valid.id()).ok());
+    }
 }
-
-

@@ -8,6 +8,15 @@ import com.platform.pipeline.catalog.InMemoryCatalogApplicationRepository;
 import com.platform.pipeline.catalog.JdbcCatalogApplicationRepository;
 import com.platform.pipeline.catalog.CatalogService;
 import com.platform.pipeline.ingest.adapter.MqAdapter;
+import com.platform.pipeline.ingest.adapter.ApiGatewayAdapter;
+import com.platform.pipeline.ingest.adapter.DbAdapter;
+import com.platform.pipeline.ingest.adapter.FtpAdapter;
+import com.platform.pipeline.ingest.adapter.KafkaAdapter;
+import com.platform.pipeline.ingest.adapter.SftpAdapter;
+import com.platform.pipeline.ingest.adapter.WebServiceAdapter;
+import com.platform.pipeline.ingest.sync.InMemoryOffsetStore;
+import com.platform.pipeline.ingest.sync.JdbcOffsetStore;
+import com.platform.pipeline.ingest.sync.OffsetStore;
 import com.platform.pipeline.service.ApiCredentialRepository;
 import com.platform.pipeline.service.AsyncInvokeLogWriter;
 import com.platform.pipeline.service.DataServiceManager;
@@ -30,6 +39,7 @@ import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import java.util.List;
+import java.util.Map;
 
 @EnableDiscoveryClient
 @EnableKafka
@@ -45,11 +55,47 @@ public class PipelineApplication {
     }
 
     @Bean
+    ProtocolAdapter webServiceAdapter() {
+        return new WebServiceAdapter();
+    }
+
+    @Bean
+    ProtocolAdapter apiGatewayAdapter() {
+        return new ApiGatewayAdapter();
+    }
+
+    @Bean
+    ProtocolAdapter ftpAdapter() {
+        return new FtpAdapter();
+    }
+
+    @Bean
+    ProtocolAdapter sftpAdapter() {
+        return new SftpAdapter();
+    }
+
+    @Bean
+    ProtocolAdapter kafkaAdapter(@Value("${spring.kafka.bootstrap-servers:localhost:9092}") String bootstrapServers) {
+        return new KafkaAdapter(bootstrapServers);
+    }
+
+    @Bean
+    ProtocolAdapter dbAdapter() {
+        return new DbAdapter(Map.of());
+    }
+
+    @Bean
+    OffsetStore offsetStore(@Autowired(required = false) JdbcTemplate jdbcTemplate) {
+        return jdbcTemplate == null ? new InMemoryOffsetStore() : new JdbcOffsetStore(jdbcTemplate);
+    }
+
+    @Bean
     IngestService ingestService(HttpAdapter httpAdapter,
                                 @Autowired(required = false) List<ProtocolAdapter> adapters,
-                                @Autowired(required = false) JdbcTemplate jdbcTemplate) {
+                                @Autowired(required = false) JdbcTemplate jdbcTemplate,
+                                OffsetStore offsetStore) {
         return new IngestService(adapters == null ? List.of(httpAdapter) : adapters, httpAdapter,
-                new JsonConverter(), new RawDataRepository(), IngestQualityGuard.disabled(), jdbcTemplate);
+                new JsonConverter(), new RawDataRepository(), IngestQualityGuard.disabled(), jdbcTemplate, offsetStore);
     }
 
     @Bean

@@ -17,7 +17,7 @@ public class RedisOffsetStore implements OffsetStore {
 
     @Override
     public void put(String key, long offset) {
-        redisTemplate.opsForValue().set(redisKey(key), String.valueOf(offset));
+        redisTemplate.opsForValue().set(redisKey(key), String.valueOf(Math.max(get(key), offset)));
     }
 
     private String redisKey(String key) {
