@@ -50,6 +50,34 @@ class ConsumerServiceTest {
     }
 
     @Test
+    void redisQuotaCounterFallsBackWhenRedisReturnsNull() {
+        RedisQuotaCounter counter = new RedisQuotaCounter(new RedisTemplate<>() {
+            @Override
+            public <T> T execute(RedisScript<T> script, List<String> keys, Object... args) {
+                return null;
+            }
+        });
+
+        assertEquals(1, counter.incrementAndCheck(9L, 2));
+        assertEquals(2, counter.incrementAndCheck(9L, 2));
+        assertThrows(BusinessException.class, () -> counter.incrementAndCheck(9L, 2));
+    }
+
+    @Test
+    void redisQuotaCounterFallsBackWhenRedisThrows() {
+        AtomicLong fallbackCalls = new AtomicLong();
+        RedisQuotaCounter counter = new RedisQuotaCounter(new RedisTemplate<>() {
+            @Override
+            public <T> T execute(RedisScript<T> script, List<String> keys, Object... args) {
+                throw new IllegalStateException("redis down");
+            }
+        }, (consumerId, maxRequests) -> fallbackCalls.incrementAndGet());
+
+        assertEquals(1, counter.incrementAndCheck(10L, 2));
+        assertEquals(1, fallbackCalls.get());
+    }
+
+    @Test
     void rejectsIllegalLifecycleMove() {
         ConsumerService service = new ConsumerService();
         Consumer consumer = service.register("crm", "CRM", "营销", "APP", "L1");

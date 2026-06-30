@@ -32,8 +32,9 @@ kubectl -n sjgx-dev logs deployment/platform-b --tail=200
 |---|---|---|
 | 网关 5xx | 查看 gateway 日志、下游 Pod readiness | 回滚或扩容异常服务 |
 | DB 连接耗尽 | 查看 Hikari 指标与慢 SQL | 扩大连接池或优化 SQL |
-| Redis 不可用 | 查看 Redis Pod 与应用降级日志 | 恢复 Redis，确认 DB fallback |
-| Kafka 积压 | 查看 consumer lag 与 billing 日志 | 恢复 Kafka，扩容消费者 |
+| Redis 不可用 | 查看 Redis Pod 与 `Redis quota counter unavailable` 降级日志 | 恢复 Redis；故障期间消费方配额降级为本 JVM 本地计数，恢复后 Redis 计数重建 |
+| Kafka 积压或不可用 | 查看 consumer lag、pipeline `Kafka invoke-log write failed` 日志与 billing 日志 | 恢复 Kafka，确认调用日志已通过 JDBC fallback 落库，必要时扩容消费者 |
+| 合作方接入端点不可达 | 查看接入任务日志、connector check 结果与合作方网络 | 当前 connector 失败会抛错并保留 checkpoint；自动重试/退避列为后续增强 |
 | 质量校验大量失败 | 查询质量结果和工单 | 暂停接入任务，修正规则或源数据 |
 
 ## 巡检清单
@@ -47,5 +48,5 @@ kubectl -n sjgx-dev logs deployment/platform-b --tail=200
 ## 备份恢复
 
 - 数据库：按机构数据库方案执行全量 + 增量备份，恢复后校验 `t_raw_data`、`t_service_invoke_log`、`t_audit_log` 计数。
-- Redis：关键缓存可重建，故障时允许穿透 DB。
+- Redis：关键缓存可重建；消费方配额在 Redis 故障时降级为本地计数，故障恢复后重新使用 Redis 计数。
 - MinIO：归档数据按桶启用版本与生命周期策略。

@@ -3,6 +3,8 @@ package com.platform.pipeline.service;
 import com.platform.common.log.JdbcServiceInvokeLogRepository;
 import com.platform.common.model.ServiceInvokeLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,20 +27,20 @@ public class AsyncInvokeLogWriter {
     private final List<ServiceInvokeLog> localMirror = new CopyOnWriteArrayList<>();
 
     public AsyncInvokeLogWriter() {
-        this(null, "service-invoke-logs", null, new ObjectMapper());
+        this(null, "service-invoke-logs", null, defaultObjectMapper());
     }
 
     public AsyncInvokeLogWriter(JdbcTemplate jdbcTemplate) {
-        this(null, "service-invoke-logs", jdbcTemplate == null ? null : new JdbcServiceInvokeLogRepository(jdbcTemplate), new ObjectMapper());
+        this(null, "service-invoke-logs", jdbcTemplate == null ? null : new JdbcServiceInvokeLogRepository(jdbcTemplate), defaultObjectMapper());
     }
 
     public AsyncInvokeLogWriter(KafkaTemplate<String, String> kafkaTemplate, String topic) {
-        this(kafkaTemplate, topic, null, new ObjectMapper());
+        this(kafkaTemplate, topic, null, defaultObjectMapper());
     }
 
     public AsyncInvokeLogWriter(KafkaTemplate<String, String> kafkaTemplate, String topic,
                                 JdbcServiceInvokeLogRepository repository) {
-        this(kafkaTemplate, topic, repository, new ObjectMapper());
+        this(kafkaTemplate, topic, repository, defaultObjectMapper());
     }
 
     public AsyncInvokeLogWriter(KafkaTemplate<String, String> kafkaTemplate, String topic,
@@ -113,6 +115,12 @@ public class AsyncInvokeLogWriter {
             return logs(Instant.now().minus(java.time.Duration.ofDays(30)), Instant.now(), 1, 1000).records();
         }
         return new ArrayList<>(localMirror);
+    }
+
+    private static ObjectMapper defaultObjectMapper() {
+        return new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     public Page<ServiceInvokeLog> logs(Instant from, Instant to, int page, int size) {
