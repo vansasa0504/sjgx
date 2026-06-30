@@ -6,6 +6,7 @@ import com.platform.common.model.Page;
 import com.platform.common.model.Result;
 import com.platform.common.model.ServiceInvokeLog;
 import com.platform.common.security.RequirePermission;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -73,9 +74,11 @@ public class ConsumerController {
     @GetMapping("/{id}/logs")
     @RequirePermission("consumer:view")
     public Result<Page<ServiceInvokeLog>> logs(@PathVariable long id,
+                                               @RequestParam(required = false) Instant from,
+                                               @RequestParam(required = false) Instant to,
                                                @RequestParam(defaultValue = "1") int page,
                                                @RequestParam(defaultValue = "10") int size) {
-        return Result.ok(consumerService.logs(id, page, size));
+        return Result.ok(consumerService.logs(id, from, to, page, size));
     }
 
     public record RegisterConsumerRequest(String code, String name, String bizLine, String systemType, String complianceLevel) {

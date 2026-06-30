@@ -29,6 +29,8 @@ class JdbcServiceInvokeLogRepositoryTest {
         assertEquals(1, repository.findByRange(now.plusMillis(500), now.plusSeconds(2), 1, 10).total());
         assertEquals("trace-2", repository.findByServiceRange("svc-a", null, null,
                 now.plusMillis(500), now.plusSeconds(2), 1, 10).records().get(0).traceId());
+        assertEquals("trace-2", repository.findByConsumerRange("c2",
+                now.plusMillis(500), now.plusSeconds(2), 1, 10).records().get(0).traceId());
         assertTrue(repository.findAllByRange(now.minusSeconds(1), now.plusSeconds(2)).stream()
                 .anyMatch(log -> "trace-1".equals(log.traceId())));
     }

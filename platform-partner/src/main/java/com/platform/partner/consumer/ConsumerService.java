@@ -8,6 +8,7 @@ import com.platform.common.model.ServiceInvokeLog;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import com.platform.common.db.IdGenerator;
@@ -149,11 +150,15 @@ public class ConsumerService {
     }
 
     public Page<ServiceInvokeLog> logs(long consumerId, int page, int size) {
+        return logs(consumerId, null, null, page, size);
+    }
+
+    public Page<ServiceInvokeLog> logs(long consumerId, Instant from, Instant to, int page, int size) {
         Consumer consumer = find(consumerId);
         if (!useDb()) {
             return Page.of(List.of(), 0, page <= 0 ? 1 : page, size <= 0 ? 10 : size);
         }
-        return invokeLogRepository.findByConsumer(consumer.consumerCode(), page, size);
+        return invokeLogRepository.findByConsumerRange(consumer.consumerCode(), from, to, page, size);
     }
 
     private Consumer require(long id) {

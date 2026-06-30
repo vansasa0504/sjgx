@@ -35,12 +35,18 @@ class ConsumerControllerTest {
         createTables(jdbcTemplate);
         ConsumerService service = new ConsumerService(jdbcTemplate);
         Consumer consumer = service.register("c-log", "consumer-log", "risk", "core", "L2");
+        Instant now = Instant.parse("2026-06-28T00:00:00Z");
         new JdbcServiceInvokeLogRepository(jdbcTemplate).save(new ServiceInvokeLog(
                 "trace-consumer", "svc-risk", "c-log", "p1", "ak", "hash",
-                200, 12, 64, null, null, Instant.now()));
+                200, 12, 64, null, null, now));
+        new JdbcServiceInvokeLogRepository(jdbcTemplate).save(new ServiceInvokeLog(
+                "trace-old", "svc-risk", "c-log", "p1", "ak", "hash-old",
+                200, 12, 64, null, null, now.minusSeconds(3600)));
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ConsumerController(service, new InMemoryAuditLogRepository())).build();
 
-        mockMvc.perform(get("/api/v1/consumers/" + consumer.id() + "/logs"))
+        mockMvc.perform(get("/api/v1/consumers/" + consumer.id() + "/logs")
+                        .param("from", "2026-06-27T23:59:59Z")
+                        .param("to", "2026-06-28T00:00:01Z"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.records[0].traceId").value("trace-consumer"))

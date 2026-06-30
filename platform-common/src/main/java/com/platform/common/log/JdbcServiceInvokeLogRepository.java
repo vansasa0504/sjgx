@@ -78,6 +78,10 @@ public class JdbcServiceInvokeLogRepository {
         return queryFiltered(null, consumerCode, null, null, null, page, size);
     }
 
+    public Page<ServiceInvokeLog> findByConsumerRange(String consumerCode, Instant from, Instant to, int page, int size) {
+        return queryFiltered(null, consumerCode, null, from, to, page, size);
+    }
+
     private Page<ServiceInvokeLog> queryFiltered(String serviceCode, String consumerCode, String status,
                                                  Instant from, Instant to, int page, int size) {
         int safeSize = size <= 0 ? 10 : size;
