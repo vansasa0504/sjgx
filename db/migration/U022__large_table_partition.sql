@@ -1,0 +1,18 @@
+/*!80000 ALTER TABLE t_service_invoke_log REMOVE PARTITIONING */;
+/*!80000 ALTER TABLE t_audit_log REMOVE PARTITIONING */;
+/*!80000 ALTER TABLE t_raw_data REMOVE PARTITIONING */;
+
+ALTER TABLE t_service_invoke_log DROP PRIMARY KEY;
+ALTER TABLE t_service_invoke_log MODIFY created_at TIMESTAMP NOT NULL;
+ALTER TABLE t_service_invoke_log ADD PRIMARY KEY (id);
+
+ALTER TABLE t_audit_log DROP PRIMARY KEY;
+ALTER TABLE t_audit_log MODIFY created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL;
+ALTER TABLE t_audit_log ADD PRIMARY KEY (id);
+
+ALTER TABLE t_raw_data DROP PRIMARY KEY;
+ALTER TABLE t_raw_data MODIFY created_at TIMESTAMP NOT NULL;
+ALTER TABLE t_raw_data ADD PRIMARY KEY (id);
+
+DROP TABLE IF EXISTS t_service_invoke_log_archive;
+DROP TABLE IF EXISTS t_audit_log_archive;

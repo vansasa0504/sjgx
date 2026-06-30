@@ -76,7 +76,7 @@ class BillingGovernanceTest {
         )));
         InMemoryBillRepository repository = new InMemoryBillRepository();
         Instant now = Instant.now();
-        BillGenerator generator = new BillGenerator(engine, repository, new InMemoryBillItemRepository(), () -> List.of(
+        BillGenerator generator = new BillGenerator(engine, repository, new InMemoryBillItemRepository(), (from, to) -> List.of(
                 new ServiceInvokeLog("svc", "c1", "p1", 200, 10, 128, now),
                 new ServiceInvokeLog("svc", "c1", "p1", 500, 20, 256, now)
         ));
@@ -143,7 +143,7 @@ class BillingGovernanceTest {
                 new ServiceInvokeLog("svc-b", "c2", "p2", 200, 10, 30, Instant.now()),
                 new ServiceInvokeLog("svc-c", "c3", "p2", 200, 10, 40, Instant.now())
         );
-        BillGenerator generator = new BillGenerator(engine, repository, new InMemoryBillItemRepository(), () -> logs);
+        BillGenerator generator = new BillGenerator(engine, repository, new InMemoryBillItemRepository(), (from, to) -> logs);
 
         Bill first = generator.generate(BillType.SETTLEMENT, BillPeriod.DAILY, day, day);
         Bill second = generator.generate(BillType.SETTLEMENT, BillPeriod.DAILY, day, day);

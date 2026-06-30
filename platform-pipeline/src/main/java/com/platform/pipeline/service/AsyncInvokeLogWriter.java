@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.platform.common.model.Page;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -81,19 +82,26 @@ public class AsyncInvokeLogWriter {
     }
 
     public Page<ServiceInvokeLog> findByService(String serviceCode, String consumerCode, String status, int page, int size) {
+        return findByService(serviceCode, consumerCode, status, null, null, page, size);
+    }
+
+    public Page<ServiceInvokeLog> findByService(String serviceCode, String consumerCode, String status,
+                                                Instant from, Instant to, int page, int size) {
         if (repository != null) {
-            return repository.findByService(serviceCode, consumerCode, status, page, size);
+            return repository.findByServiceRange(serviceCode, consumerCode, status, from, to, page, size);
         }
-        List<ServiceInvokeLog> filtered = logs().stream()
+        List<ServiceInvokeLog> filtered = localMirror.stream()
+                .filter(l -> from == null || !l.createdAt().isBefore(from))
+                .filter(l -> to == null || l.createdAt().isBefore(to))
                 .filter(l -> serviceCode == null || serviceCode.isBlank() || serviceCode.equals(l.serviceCode()))
                 .filter(l -> consumerCode == null || consumerCode.isBlank() || consumerCode.equals(l.consumerCode()))
                 .filter(l -> status == null || status.isBlank() || status.equals(String.valueOf(l.status())))
                 .toList();
         int safeSize = size <= 0 ? 10 : size;
         int safePage = page <= 0 ? 1 : page;
-        int from = Math.min((safePage - 1) * safeSize, filtered.size());
-        int to = Math.min(from + safeSize, filtered.size());
-        return Page.of(new ArrayList<>(filtered.subList(from, to)), filtered.size(), safePage, safeSize);
+        int startIndex = Math.min((safePage - 1) * safeSize, filtered.size());
+        int endIndex = Math.min(startIndex + safeSize, filtered.size());
+        return Page.of(new ArrayList<>(filtered.subList(startIndex, endIndex)), filtered.size(), safePage, safeSize);
     }
 
     public boolean hasRepository() {
@@ -102,9 +110,24 @@ public class AsyncInvokeLogWriter {
 
     public List<ServiceInvokeLog> logs() {
         if (repository != null) {
-            return repository.findAll();
+            return logs(Instant.now().minus(java.time.Duration.ofDays(30)), Instant.now(), 1, 1000).records();
         }
         return new ArrayList<>(localMirror);
+    }
+
+    public Page<ServiceInvokeLog> logs(Instant from, Instant to, int page, int size) {
+        if (repository != null) {
+            return repository.findByRange(from, to, page, size);
+        }
+        List<ServiceInvokeLog> filtered = localMirror.stream()
+                .filter(l -> from == null || !l.createdAt().isBefore(from))
+                .filter(l -> to == null || l.createdAt().isBefore(to))
+                .toList();
+        int safeSize = size <= 0 ? 10 : size;
+        int safePage = page <= 0 ? 1 : page;
+        int offset = Math.min((safePage - 1) * safeSize, filtered.size());
+        int end = Math.min(offset + safeSize, filtered.size());
+        return Page.of(new ArrayList<>(filtered.subList(offset, end)), filtered.size(), safePage, safeSize);
     }
 }
 

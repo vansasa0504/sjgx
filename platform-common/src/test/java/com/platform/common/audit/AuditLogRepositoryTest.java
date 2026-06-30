@@ -81,6 +81,22 @@ class AuditLogRepositoryTest {
     }
 
     @Test
+    void verifyKeepsHashContinuityAcrossBatches() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource("audit_batches"));
+        createAuditTable(jdbcTemplate);
+        JdbcAuditLogRepository repository = new JdbcAuditLogRepository(jdbcTemplate);
+        for (int i = 0; i < 2505; i++) {
+            repository.append(new AuditEvent(null, "trace-batch", "BILL", "USER", "u1", "BILL", "b" + i,
+                    "event-" + i, "detail", "", "", AuditStatus.SUCCESS, Instant.now().plusSeconds(i)));
+        }
+
+        AuditChainVerification verification = repository.verify();
+
+        assertTrue(verification.intact());
+        assertEquals(2505L, verification.totalChecked());
+    }
+
+    @Test
     void h2TriggerRejectsAuditUpdateAndDelete() {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource("audit_append_only"));
         createAuditTable(jdbcTemplate);

@@ -1,6 +1,7 @@
 package com.platform.common.log;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.platform.common.model.ServiceInvokeLog;
 import java.time.Instant;
@@ -24,6 +25,12 @@ class JdbcServiceInvokeLogRepositoryTest {
         assertEquals(1, repository.findByConsumer("c1", 1, 10).total());
         assertEquals("trace-1", repository.findByService("svc-a", "c1", "200", 1, 10).records().get(0).traceId());
         assertEquals("SERVICE-500", repository.findByService("svc-a", null, "500", 1, 10).records().get(0).errorCode());
+        assertEquals(2, repository.findByRange(now.minusSeconds(1), now.plusSeconds(2), 1, 10).total());
+        assertEquals(1, repository.findByRange(now.plusMillis(500), now.plusSeconds(2), 1, 10).total());
+        assertEquals("trace-2", repository.findByServiceRange("svc-a", null, null,
+                now.plusMillis(500), now.plusSeconds(2), 1, 10).records().get(0).traceId());
+        assertTrue(repository.findAllByRange(now.minusSeconds(1), now.plusSeconds(2)).stream()
+                .anyMatch(log -> "trace-1".equals(log.traceId())));
     }
 
     private void createTable(JdbcTemplate jdbcTemplate) {

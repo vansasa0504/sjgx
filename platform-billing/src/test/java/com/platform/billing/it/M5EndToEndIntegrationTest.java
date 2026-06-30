@@ -103,7 +103,7 @@ class M5EndToEndIntegrationTest {
                         BillGenerator.stableTargetId("c1"), BigDecimal.ONE, "CNY", today.minusDays(1), today.plusDays(1), "ACTIVE", 0)
         )));
         Bill bill = new BillGenerator(engine, new InMemoryBillRepository(), new InMemoryBillItemRepository(),
-                () -> dataServiceManager.logWriter().logs()).generate(BillType.EXPENSE, BillPeriod.DAILY, today, today);
+                (from, to) -> dataServiceManager.logWriter().logs(from, to, 1, 1000).records()).generate(BillType.EXPENSE, BillPeriod.DAILY, today, today);
         assertEquals(new BigDecimal("1.0000"), bill.totalAmount());
 
         var snapshots = new StatsAggregator(new InMemoryStatsSnapshotRepository(), new FixedCacheMetricsProvider(new BigDecimal("0.95")))

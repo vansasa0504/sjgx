@@ -21,7 +21,7 @@ class RegulatoryReportServiceTest {
     void generatePersistsSubmittedReceiptAndMasksPersonalInfo() {
         InMemoryRegulatoryReportRepository repository = new InMemoryRegulatoryReportRepository();
         InMemoryAuditLogRepository auditRepository = new InMemoryAuditLogRepository();
-        RegulatoryReportService service = new RegulatoryReportService(this::logs, repository,
+        RegulatoryReportService service = new RegulatoryReportService((from, to) -> logs(), repository,
                 report -> new RegulatorySubmitResult(true, "REG-PERSONAL_INFO", "ok"), auditRepository);
 
         RegulatoryReportRecord record = service.generate("PERSONAL_INFO", T1, T2);
@@ -43,7 +43,7 @@ class RegulatoryReportServiceTest {
 
     @Test
     void complianceReportDoesNotMaskAndFailureReceiptIsPersisted() {
-        RegulatoryReportService service = new RegulatoryReportService(this::logs,
+        RegulatoryReportService service = new RegulatoryReportService((from, to) -> logs(),
                 new InMemoryRegulatoryReportRepository(),
                 report -> new RegulatorySubmitResult(false, null, "remote rejected"),
                 new InMemoryAuditLogRepository());
@@ -62,7 +62,7 @@ class RegulatoryReportServiceTest {
 
     @Test
     void timeRangeFiltersLogsAndInvalidTypeReturnsBusinessError() {
-        RegulatoryReportService service = new RegulatoryReportService(this::logs,
+        RegulatoryReportService service = new RegulatoryReportService((from, to) -> logs(),
                 new InMemoryRegulatoryReportRepository(),
                 report -> new RegulatorySubmitResult(true, "REG-DATA_SOURCE", "ok"),
                 new InMemoryAuditLogRepository());

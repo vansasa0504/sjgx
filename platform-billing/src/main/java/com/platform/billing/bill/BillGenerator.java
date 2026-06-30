@@ -17,21 +17,21 @@ import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 public class BillGenerator {
     private final BillingRuleEngine ruleEngine;
     private final BillRepository repository;
     private final BillItemRepository itemRepository;
-    private final Supplier<List<ServiceInvokeLog>> logSupplier;
+    private final BiFunction<Instant, Instant, List<ServiceInvokeLog>> logSupplier;
 
     public BillGenerator(BillingRuleEngine ruleEngine, BillRepository repository) {
-        this(ruleEngine, repository, new InMemoryBillItemRepository(), List::of);
+        this(ruleEngine, repository, new InMemoryBillItemRepository(), (from, to) -> List.of());
     }
 
     public BillGenerator(BillingRuleEngine ruleEngine, BillRepository repository,
-                         BillItemRepository itemRepository, Supplier<List<ServiceInvokeLog>> logSupplier) {
+                         BillItemRepository itemRepository, BiFunction<Instant, Instant, List<ServiceInvokeLog>> logSupplier) {
         this.ruleEngine = ruleEngine;
         this.repository = repository;
         this.itemRepository = itemRepository;
@@ -39,9 +39,11 @@ public class BillGenerator {
     }
 
     public Bill generate(BillType billType, BillPeriod period, LocalDate start, LocalDate end) {
-        Map<String, List<ServiceInvokeLog>> grouped = logSupplier.get().stream()
-                .filter(log -> !log.createdAt().isBefore(start.atStartOfDay().toInstant(ZoneOffset.UTC)))
-                .filter(log -> log.createdAt().isBefore(end.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)))
+        Instant from = start.atStartOfDay().toInstant(ZoneOffset.UTC);
+        Instant to = end.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+        Map<String, List<ServiceInvokeLog>> grouped = logSupplier.apply(from, to).stream()
+                .filter(log -> !log.createdAt().isBefore(from))
+                .filter(log -> log.createdAt().isBefore(to))
                 .collect(Collectors.groupingBy(log -> groupKey(billType, log)));
         List<BillItem> items = grouped.entrySet().stream()
                 .map(entry -> itemFor(billType, period, start, end, entry.getKey(), entry.getValue()))

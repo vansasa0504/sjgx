@@ -34,7 +34,7 @@ class BillingControllerTest {
         var billRepository = new InMemoryBillRepository();
         var billItemRepository = new InMemoryBillItemRepository();
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
-        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, java.util.List::of);
+        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, (from, to) -> java.util.List.of());
         var billService = new BillService(billRepository, new BillStateMachine());
         BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository,
                 billItemRepository, billService, financeSyncService(billRepository));
@@ -61,7 +61,7 @@ class BillingControllerTest {
         var billRepository = new InMemoryBillRepository();
         var billItemRepository = new InMemoryBillItemRepository();
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
-        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, invokeLogRepository::findAll);
+        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, invokeLogRepository::findAllByRange);
         var billService = new BillService(billRepository, new BillStateMachine());
         BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository,
                 billItemRepository, billService, financeSyncService(billRepository));
@@ -125,7 +125,7 @@ class BillingControllerTest {
         var billRepository = new InMemoryBillRepository();
         var billItemRepository = new InMemoryBillItemRepository();
         var engine = BillingRuleEngine.defaultEngine(ruleRepository);
-        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, invokeLogRepository::findAll);
+        var billGenerator = new BillGenerator(engine, billRepository, billItemRepository, invokeLogRepository::findAllByRange);
         var billService = new BillService(billRepository, new BillStateMachine());
         BillingController controller = new BillingController(ruleRepository, billGenerator, billRepository,
                 billItemRepository, billService, financeSyncService(billRepository));

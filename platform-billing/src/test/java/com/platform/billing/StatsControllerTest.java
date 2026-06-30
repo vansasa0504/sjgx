@@ -22,7 +22,7 @@ class StatsControllerTest {
         var snapshotRepository = new InMemoryStatsSnapshotRepository();
         var billRepository = new InMemoryBillRepository();
         var auditLogRepository = new InMemoryAuditLogRepository();
-        var regulatoryReportService = new RegulatoryReportService(java.util.List::of,
+        var regulatoryReportService = new RegulatoryReportService((from, to) -> java.util.List.of(),
                 new InMemoryRegulatoryReportRepository(),
                 report -> new com.platform.billing.regulatory.RegulatorySubmitResult(true, "REG-" + report.type().name(), "ok"),
                 auditLogRepository);
@@ -37,7 +37,7 @@ class StatsControllerTest {
     @Test
     void auditSupportsTraceQueryAndVerify() {
         var auditLogRepository = new InMemoryAuditLogRepository();
-        var regulatoryReportService = new RegulatoryReportService(java.util.List::of,
+        var regulatoryReportService = new RegulatoryReportService((from, to) -> java.util.List.of(),
                 new InMemoryRegulatoryReportRepository(),
                 report -> new com.platform.billing.regulatory.RegulatorySubmitResult(true, "REG-" + report.type().name(), "ok"),
                 auditLogRepository);

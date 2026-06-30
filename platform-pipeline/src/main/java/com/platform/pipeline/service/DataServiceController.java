@@ -4,6 +4,7 @@ import com.platform.common.model.Page;
 import com.platform.common.model.Result;
 import com.platform.common.model.ServiceInvokeLog;
 import com.platform.common.security.RequirePermission;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -78,9 +79,13 @@ public class DataServiceController {
     public Result<Page<ServiceInvokeLog>> logs(@PathVariable String serviceCode,
                                                @RequestParam(required = false) String consumerId,
                                                @RequestParam(required = false) String status,
+                                               @RequestParam(required = false) Instant from,
+                                               @RequestParam(required = false) Instant to,
                                                @RequestParam(defaultValue = "1") int page,
                                                @RequestParam(defaultValue = "10") int size) {
-        return Result.ok(dataServiceManager.logs(serviceCode, consumerId, status, page, size));
+        Instant end = to == null ? Instant.now() : to;
+        Instant start = from == null ? end.minus(java.time.Duration.ofDays(30)) : from;
+        return Result.ok(dataServiceManager.logs(serviceCode, consumerId, status, start, end, page, size));
     }
 
     @PostMapping("/{serviceCode}/invoke")

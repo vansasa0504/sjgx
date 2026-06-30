@@ -24,6 +24,10 @@ class MigrationDialectCompatibilityTest {
         assertContractCrud(jdbcTemplate);
         assertColumnType(jdbcTemplate, "T_API_CREDENTIAL", "ENABLED", "TINYINT");
         assertColumnType(jdbcTemplate, "T_AUDIT_LOG", "HASH", "CHARACTER VARYING");
+        assertPrimaryKeyContains(jdbcTemplate, "T_SERVICE_INVOKE_LOG", "CREATED_AT");
+        assertPrimaryKeyContains(jdbcTemplate, "T_AUDIT_LOG", "CREATED_AT");
+        assertPrimaryKeyContains(jdbcTemplate, "T_RAW_DATA", "CREATED_AT");
+        assertArchiveTables(jdbcTemplate);
     }
 
     @Test
@@ -34,6 +38,10 @@ class MigrationDialectCompatibilityTest {
         assertColumnType(jdbcTemplate, "T_API_CREDENTIAL", "ENABLED", "SMALLINT");
         assertColumnType(jdbcTemplate, "T_RAW_DATA", "PAYLOAD", "CHARACTER LARGE OBJECT");
         assertColumnType(jdbcTemplate, "T_AUDIT_LOG", "HASH", "CHARACTER VARYING");
+        assertPrimaryKeyContains(jdbcTemplate, "T_SERVICE_INVOKE_LOG", "CREATED_AT");
+        assertPrimaryKeyContains(jdbcTemplate, "T_AUDIT_LOG", "CREATED_AT");
+        assertPrimaryKeyContains(jdbcTemplate, "T_RAW_DATA", "CREATED_AT");
+        assertArchiveTables(jdbcTemplate);
     }
 
     @Test
@@ -50,6 +58,11 @@ class MigrationDialectCompatibilityTest {
         }
         assertFalse(contains(dmVersionSql, " TINYINT "));
         assertFalse(contains(dmVersionSql, " TEXT"));
+        assertFalse(contains(dmVersionSql, "TO_DAYS"));
+        assertFalse(contains(dmVersionSql, "/*!80000"));
+        assertTrue(contains(commonVersionSql, "PARTITION BY RANGE COLUMNS"));
+        assertTrue(contains(commonVersionSql, "/*!80000"));
+        assertFalse(contains(commonVersionSql, "TO_DAYS"));
     }
 
     private JdbcTemplate migrate(String name, String location, boolean mysqlMode) {
@@ -205,6 +218,26 @@ class MigrationDialectCompatibilityTest {
                 WHERE TABLE_NAME = ? AND COLUMN_NAME = ?
                 """, String.class, tableName, columnName);
         assertEquals(expectedTypeName, actual);
+    }
+
+    private void assertPrimaryKeyContains(JdbcTemplate jdbcTemplate, String tableName, String columnName) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+                JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS c
+                  ON k.CONSTRAINT_NAME = c.CONSTRAINT_NAME AND k.TABLE_NAME = c.TABLE_NAME
+                WHERE k.TABLE_NAME = ? AND k.COLUMN_NAME = ? AND c.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                """, Integer.class, tableName, columnName);
+        assertTrue(count != null && count > 0, tableName + " primary key should contain " + columnName);
+    }
+
+    private void assertArchiveTables(JdbcTemplate jdbcTemplate) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_NAME IN ('T_SERVICE_INVOKE_LOG_ARCHIVE', 'T_AUDIT_LOG_ARCHIVE')
+                """, Integer.class);
+        assertEquals(2, count);
     }
 
     private JdbcDataSource dataSource(String name, boolean mysqlMode) {

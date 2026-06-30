@@ -70,7 +70,9 @@ public class StatsController {
                                           @RequestParam(required = false) String from,
                                           @RequestParam(required = false) String to) {
         List<String> rows = invokeLogRepository == null ? List.of()
-                : invokeLogRepository.findAll().stream()
+                : invokeLogRepository.findAllByRange(
+                        parseInstant(from) == null ? Instant.EPOCH : parseInstant(from),
+                        parseInstant(to) == null ? Instant.now() : parseInstant(to).plusMillis(1)).stream()
                 .map(log -> log.traceId() + "|" + log.serviceCode() + "|" + log.consumerCode() + "|" + log.status())
                 .toList();
         return Result.ok(reportGenerator.generate(type, rows, Path.of("target/reports")));

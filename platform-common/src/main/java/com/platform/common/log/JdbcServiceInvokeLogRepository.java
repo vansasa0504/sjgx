@@ -40,20 +40,46 @@ public class JdbcServiceInvokeLogRepository {
         return normalized;
     }
 
+    /**
+     * Only for legacy tests and in-memory parity checks. Production callers must use range queries.
+     */
+    @Deprecated
     public List<ServiceInvokeLog> findAll() {
         return jdbcTemplate.query("SELECT * FROM t_service_invoke_log ORDER BY created_at DESC, id DESC", mapper());
     }
 
+    public Page<ServiceInvokeLog> findByRange(Instant from, Instant to, int page, int size) {
+        return queryFiltered(null, null, null, from, to, page, size);
+    }
+
+    public Page<ServiceInvokeLog> findByServiceRange(String serviceCode, String consumerCode, String status,
+                                                     Instant from, Instant to, int page, int size) {
+        return queryFiltered(serviceCode, consumerCode, status, from, to, page, size);
+    }
+
+    public List<ServiceInvokeLog> findAllByRange(Instant from, Instant to) {
+        List<ServiceInvokeLog> records = new ArrayList<>();
+        int page = 1;
+        while (true) {
+            Page<ServiceInvokeLog> current = findByRange(from, to, page, 1000);
+            records.addAll(current.records());
+            if (records.size() >= current.total() || current.records().isEmpty()) {
+                return records;
+            }
+            page++;
+        }
+    }
+
     public Page<ServiceInvokeLog> findByService(String serviceCode, String consumerCode, String status, int page, int size) {
-        return queryFiltered(serviceCode, consumerCode, status, page, size);
+        return queryFiltered(serviceCode, consumerCode, status, null, null, page, size);
     }
 
     public Page<ServiceInvokeLog> findByConsumer(String consumerCode, int page, int size) {
-        return queryFiltered(null, consumerCode, null, page, size);
+        return queryFiltered(null, consumerCode, null, null, null, page, size);
     }
 
     private Page<ServiceInvokeLog> queryFiltered(String serviceCode, String consumerCode, String status,
-                                                 int page, int size) {
+                                                 Instant from, Instant to, int page, int size) {
         int safeSize = size <= 0 ? 10 : size;
         int safePage = page <= 0 ? 1 : page;
         int offset = (safePage - 1) * safeSize;
@@ -77,6 +103,14 @@ public class JdbcServiceInvokeLogRepository {
             } catch (NumberFormatException ignored) {
                 // 非数字 status 不作为过滤条件
             }
+        }
+        if (from != null) {
+            where.append(" AND created_at >= ?");
+            args.add(Timestamp.from(from));
+        }
+        if (to != null) {
+            where.append(" AND created_at < ?");
+            args.add(Timestamp.from(to));
         }
 
         String orderClause = " ORDER BY created_at DESC, id DESC";

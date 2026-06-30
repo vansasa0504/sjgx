@@ -12,6 +12,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
 public class JdbcAuditLogRepository implements AuditLogRepository {
+    private static final int VERIFY_BATCH_SIZE = 1000;
+
     private final JdbcTemplate jdbcTemplate;
     private final IdGenerator idGenerator;
 
@@ -62,25 +64,36 @@ public class JdbcAuditLogRepository implements AuditLogRepository {
 
     @Override
     public AuditChainVerification verify() {
-        List<AuditEvent> events = jdbcTemplate.query("SELECT * FROM t_audit_log ORDER BY id", mapper());
         String previousHash = "";
         long checked = 0;
-        for (AuditEvent event : events) {
-            if (event.hash() == null || event.hash().isBlank()) {
-                previousHash = "";
-                continue;
+        long lastId = 0L;
+        while (true) {
+            List<AuditEvent> events = jdbcTemplate.query("""
+                    SELECT * FROM t_audit_log
+                    WHERE id > ?
+                    ORDER BY id
+                    LIMIT ?
+                    """, mapper(), lastId, VERIFY_BATCH_SIZE);
+            if (events.isEmpty()) {
+                return AuditChainVerification.intact(checked);
             }
-            if (!previousHash.equals(event.prevHash())) {
-                return AuditChainVerification.broken(checked + 1, event.id(), "prev_mismatch");
+            for (AuditEvent event : events) {
+                lastId = event.id() == null ? lastId : event.id();
+                if (event.hash() == null || event.hash().isBlank()) {
+                    previousHash = "";
+                    continue;
+                }
+                if (!previousHash.equals(event.prevHash())) {
+                    return AuditChainVerification.broken(checked + 1, event.id(), "prev_mismatch");
+                }
+                String expected = AuditHashing.hash(event.prevHash(), event);
+                if (!expected.equals(event.hash())) {
+                    return AuditChainVerification.broken(checked + 1, event.id(), "hash_mismatch");
+                }
+                previousHash = event.hash();
+                checked++;
             }
-            String expected = AuditHashing.hash(event.prevHash(), event);
-            if (!expected.equals(event.hash())) {
-                return AuditChainVerification.broken(checked + 1, event.id(), "hash_mismatch");
-            }
-            previousHash = event.hash();
-            checked++;
         }
-        return AuditChainVerification.intact(checked);
     }
 
     private String latestHash() {

@@ -12,23 +12,24 @@ import com.platform.common.exception.BusinessException;
 import com.platform.common.model.ServiceInvokeLog;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Supplier;
+import java.util.function.BiFunction;
 
 public class RegulatoryReportService {
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    private final Supplier<List<ServiceInvokeLog>> invokeLogs;
+    private final BiFunction<Instant, Instant, List<ServiceInvokeLog>> invokeLogs;
     private final RegulatoryReportRepository repository;
     private final RegulatoryReportingAdapter reportingAdapter;
     private final AuditLogRepository auditLogRepository;
 
-    public RegulatoryReportService(Supplier<List<ServiceInvokeLog>> invokeLogs,
+    public RegulatoryReportService(BiFunction<Instant, Instant, List<ServiceInvokeLog>> invokeLogs,
                                    RegulatoryReportRepository repository,
                                    RegulatoryReportingAdapter reportingAdapter,
                                    AuditLogRepository auditLogRepository) {
@@ -41,7 +42,9 @@ public class RegulatoryReportService {
     public RegulatoryReportRecord generate(String reportType, Instant from, Instant to) {
         ReportType type = parseType(reportType);
         String auditTraceId = UUID.randomUUID().toString();
-        List<ServiceInvokeLog> matched = invokeLogs.get().stream()
+        Instant queryFrom = from == null ? Instant.EPOCH : from;
+        Instant queryTo = to == null ? Instant.now() : to.plus(1, ChronoUnit.MILLIS);
+        List<ServiceInvokeLog> matched = invokeLogs.apply(queryFrom, queryTo).stream()
                 .filter(log -> from == null || !log.createdAt().isBefore(from))
                 .filter(log -> to == null || !log.createdAt().isAfter(to))
                 .toList();

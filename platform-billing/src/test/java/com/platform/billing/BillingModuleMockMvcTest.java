@@ -377,7 +377,7 @@ class BillingModuleMockMvcTest {
         @Primary
         RegulatoryReportService testRegulatoryReportService(RegulatoryReportRepository repository,
                                                             AuditLogRepository auditLogRepository) {
-            return new RegulatoryReportService(RegulatoryReportTestConfig::logs, repository,
+            return new RegulatoryReportService((from, to) -> RegulatoryReportTestConfig.logs(), repository,
                     report -> new RegulatorySubmitResult(true, "REG-" + report.type().name(), "mock submitted"),
                     auditLogRepository);
         }

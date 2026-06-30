@@ -117,10 +117,15 @@ public class DataServiceManager {
     }
 
     public Page<ServiceInvokeLog> logs(String serviceCode, String consumerId, String status, int page, int size) {
+        return logs(serviceCode, consumerId, status, Instant.now().minus(java.time.Duration.ofDays(30)), Instant.now(), page, size);
+    }
+
+    public Page<ServiceInvokeLog> logs(String serviceCode, String consumerId, String status,
+                                       Instant fromInstant, Instant toInstant, int page, int size) {
         if (logWriter.hasRepository()) {
-            return logWriter.findByService(serviceCode, consumerId, status, page, size);
+            return logWriter.findByService(serviceCode, consumerId, status, fromInstant, toInstant, page, size);
         }
-        List<ServiceInvokeLog> filtered = logWriter.logs().stream()
+        List<ServiceInvokeLog> filtered = logWriter.logs(fromInstant, toInstant, 1, Integer.MAX_VALUE).records().stream()
                 .filter(l -> serviceCode == null || serviceCode.isBlank() || serviceCode.equals(l.serviceCode()))
                 .filter(l -> consumerId == null || consumerId.isBlank() || consumerId.equals(l.consumerCode()))
                 .filter(l -> status == null || status.isBlank() || status.equals(String.valueOf(l.status())))

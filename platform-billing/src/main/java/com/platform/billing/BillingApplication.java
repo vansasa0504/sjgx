@@ -39,11 +39,18 @@ import com.platform.billing.stats.StatsSnapshotRepository;
 import com.platform.common.audit.AuditLogRepository;
 import com.platform.common.audit.InMemoryAuditLogRepository;
 import com.platform.common.log.JdbcServiceInvokeLogRepository;
+import com.platform.common.partition.JdbcPartitionMaintainer;
+import com.platform.common.partition.PartitionMaintenanceJob;
+import com.platform.common.partition.PartitionMaintainer;
 import java.math.BigDecimal;
 import java.util.List;
+import java.time.Duration;
+import java.time.Instant;
 import org.springframework.boot.SpringApplication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -98,7 +105,7 @@ public class BillingApplication {
                                 BillItemRepository billItemRepository,
                                 @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
         return new BillGenerator(ruleEngine, billRepository, billItemRepository,
-                () -> invokeLogRepository == null ? List.of() : invokeLogRepository.findAll());
+                (from, to) -> invokeLogs(invokeLogRepository, from, to));
     }
 
     @Bean
@@ -196,7 +203,7 @@ public class BillingApplication {
             AuditLogRepository auditLogRepository,
             @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
         return new RegulatoryReportService(
-                () -> invokeLogRepository == null ? List.of() : invokeLogRepository.findAll(),
+                (from, to) -> invokeLogs(invokeLogRepository, from, to),
                 regulatoryReportRepository, regulatoryReportingAdapter, auditLogRepository);
     }
 
@@ -211,6 +218,26 @@ public class BillingApplication {
             StatsAggregator statsAggregator,
             @Autowired(required = false) JdbcServiceInvokeLogRepository invokeLogRepository) {
         return new com.platform.billing.job.StatsAggregatorJobHandler(statsAggregator,
-                () -> invokeLogRepository == null ? List.of() : invokeLogRepository.findAll());
+                (from, to) -> invokeLogs(invokeLogRepository, from, to));
+    }
+
+    private List<com.platform.common.model.ServiceInvokeLog> invokeLogs(JdbcServiceInvokeLogRepository repository,
+                                                                        Instant from, Instant to) {
+        return repository == null ? List.of() : repository.findAllByRange(from, to);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "platform.partition.maintain.enabled", havingValue = "true")
+    PartitionMaintainer partitionMaintainer(JdbcTemplate jdbcTemplate, AuditLogRepository auditLogRepository) {
+        return new JdbcPartitionMaintainer(jdbcTemplate, auditLogRepository);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "platform.partition.maintain.enabled", havingValue = "true")
+    PartitionMaintenanceJob partitionMaintenanceJob(
+            PartitionMaintainer maintainer,
+            @Value("${platform.partition.maintain.months-ahead:2}") int monthsAhead,
+            @Value("${platform.partition.maintain.retention-days:1095}") long retentionDays) {
+        return new PartitionMaintenanceJob(maintainer, monthsAhead, Duration.ofDays(retentionDays));
     }
 }
