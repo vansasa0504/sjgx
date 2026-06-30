@@ -142,6 +142,21 @@ class PartnerModuleMockMvcTest {
     }
 
     @Test
+    void consumerLogsRejectLowPrivilegeTokenForOtherConsumerResource() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/consumers")
+                .header("Authorization", "Bearer " + adminToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"code\":\"idor-c1\",\"name\":\"IdorConsumer\",\"bizLine\":\"risk\",\"systemType\":\"core\",\"complianceLevel\":\"L2\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        long id = om.readTree(result.getResponse().getContentAsString()).get("data").get("id").asLong();
+
+        mockMvc.perform(get("/api/v1/consumers/" + id + "/logs")
+                .header("Authorization", "Bearer " + viewerToken()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void consumerDetailNotFoundReturns404() throws Exception {
         mockMvc.perform(get("/api/v1/consumers/99999").header("Authorization", "Bearer " + adminToken()))
                 .andExpect(status().isNotFound());

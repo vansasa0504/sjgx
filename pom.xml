@@ -32,6 +32,7 @@
         <bouncycastle.version>1.78.1</bouncycastle.version>
         <testcontainers.version>1.21.3</testcontainers.version>
         <minio.version>8.5.10</minio.version>
+        <dependency-check.version>9.2.0</dependency-check.version>
     </properties>
 
     <dependencyManagement>
@@ -102,6 +103,27 @@
                     <scope>provided</scope>
                 </dependency>
             </dependencies>
+        </profile>
+        <profile>
+            <id>security</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.owasp</groupId>
+                        <artifactId>dependency-check-maven</artifactId>
+                        <version>${dependency-check.version}</version>
+                        <configuration>
+                            <formats>
+                                <format>HTML</format>
+                                <format>JSON</format>
+                            </formats>
+                            <outputDirectory>${maven.multiModuleProjectDirectory}/security/reports</outputDirectory>
+                            <failBuildOnCVSS>9</failBuildOnCVSS>
+                            <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
     <build>

@@ -8,6 +8,7 @@ target/
 .docker-tmp/
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.crt

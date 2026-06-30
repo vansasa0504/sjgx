@@ -157,6 +157,15 @@ class PipelineModuleMockMvcTest {
     }
 
     @Test
+    void serviceLogsRejectLowPrivilegeTokenForOtherServiceResource() throws Exception {
+        dataServiceManager.register("idor-svc", "IDOR Service", "idor-route");
+
+        mockMvc.perform(get("/api/v1/services/idor-svc/logs")
+                .header("Authorization", "Bearer " + viewerToken()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void serviceRegisterNoToken() throws Exception {
         mockMvc.perform(post("/api/v1/services")
                 .contentType(MediaType.APPLICATION_JSON)
