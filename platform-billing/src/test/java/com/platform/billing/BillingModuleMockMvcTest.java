@@ -209,7 +209,7 @@ class BillingModuleMockMvcTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"reason\":\"late\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("BILL_STATE_INVALID"));
+                .andExpect(jsonPath("$.code").value("BILL-409"));
     }
 
     @Test
@@ -352,7 +352,7 @@ class BillingModuleMockMvcTest {
         mockMvc.perform(post("/api/v1/billing/bills/BILL-GEN-MVC/sync")
                 .header("Authorization", "Bearer " + adminToken()))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("BILL_STATE_INVALID"));
+                .andExpect(jsonPath("$.code").value("BILL-409"));
 
         mockMvc.perform(post("/api/v1/billing/bills/MISSING/sync")
                 .header("Authorization", "Bearer " + adminToken()))

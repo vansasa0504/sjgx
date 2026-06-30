@@ -64,6 +64,30 @@ class FinanceSyncServiceTest {
     }
 
     @Test
+    void retryCountIsScopedToLatestFailedSequence() {
+        InMemoryBillRepository bills = new InMemoryBillRepository();
+        InMemoryFinanceSyncRepository records = new InMemoryFinanceSyncRepository();
+        bills.save(bill("BILL-R", BillStatus.CONFIRMED));
+        MutableFinanceAdapter finance = new MutableFinanceAdapter(false);
+        FinanceSyncService service = new FinanceSyncService(bills, records, finance,
+                bill -> new FinanceSyncResult(true, "PUR-" + bill.billNo(), "ok"),
+                new InMemoryAuditLogRepository());
+
+        FinanceSyncRecord firstFailed = service.sync("BILL-R", null);
+        finance.success = true;
+        FinanceSyncRecord firstRetry = service.retry("BILL-R", null);
+        finance.success = false;
+        FinanceSyncRecord secondFailed = service.sync("BILL-R", null);
+        finance.success = true;
+        FinanceSyncRecord secondRetry = service.retry("BILL-R", null);
+
+        assertEquals(0, firstFailed.retryCount());
+        assertEquals(1, firstRetry.retryCount());
+        assertEquals(0, secondFailed.retryCount());
+        assertEquals(1, secondRetry.retryCount());
+    }
+
+    @Test
     void validatesStateMissingBillAdapterTypeAndRetryPrecondition() {
         InMemoryBillRepository bills = new InMemoryBillRepository();
         bills.save(bill("BILL-G", BillStatus.GENERATED));
@@ -73,7 +97,7 @@ class FinanceSyncServiceTest {
                 bill -> new FinanceSyncResult(true, "PUR-" + bill.billNo(), "ok"),
                 new InMemoryAuditLogRepository());
 
-        assertCode("BILL_STATE_INVALID", () -> service.sync("BILL-G", null));
+        assertCode("BILL-409", () -> service.sync("BILL-G", null));
         assertCode("BILL-404", () -> service.sync("MISSING", null));
         assertCode("FINANCE_SYNC-400", () -> service.sync("BILL-C", "BAD"));
         assertCode("FINANCE_SYNC-409", () -> service.retry("BILL-C", null));

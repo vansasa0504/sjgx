@@ -18,7 +18,7 @@ public class BillStateMachine {
 
     public BillStatus transition(BillStatus current, BillStatus next) {
         if (!transitions.getOrDefault(current, Set.of()).contains(next)) {
-            throw new BusinessException("BILL_STATE_INVALID", current + " cannot transition to " + next);
+            throw new BusinessException("BILL-409", current + " cannot transition to " + next);
         }
         return next;
     }

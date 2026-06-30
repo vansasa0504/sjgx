@@ -43,6 +43,7 @@ public class FinanceSyncService {
     public FinanceSyncRecord retry(String billNo, String adapterType) {
         String type = normalizeAdapterType(adapterType);
         Bill bill = requireSyncableBill(billNo);
+        // retryCount is scoped to the latest failed sync sequence; a new manual sync starts a new sequence at 0.
         FinanceSyncRecord failed = syncRepository.findLastFailed(billNo, type)
                 .orElseThrow(() -> new BusinessException("FINANCE_SYNC-409", "no failed sync record to retry"));
         return doSync(bill, type, failed.retryCount() + 1, "RETRY");
@@ -79,7 +80,7 @@ public class FinanceSyncService {
     private Bill requireSyncableBill(String billNo) {
         Bill bill = requireBill(billNo);
         if (!SYNCABLE_STATUS.contains(bill.status())) {
-            throw new BusinessException("BILL_STATE_INVALID", "bill state does not allow finance sync: " + bill.status());
+            throw new BusinessException("BILL-409", "bill state does not allow finance sync: " + bill.status());
         }
         return bill;
     }

@@ -18,7 +18,7 @@ public class GlobalExceptionHandler {
         HttpStatus status = code.endsWith("401") ? HttpStatus.UNAUTHORIZED
                 : code.endsWith("403") ? HttpStatus.FORBIDDEN
                 : code.endsWith("404") && !code.startsWith("AUTH") ? HttpStatus.NOT_FOUND
-                : code.endsWith("409") || "BILL_STATE_INVALID".equals(code) ? HttpStatus.CONFLICT
+                : code.endsWith("409") ? HttpStatus.CONFLICT
                 : HttpStatus.BAD_REQUEST;
         if (status.is5xxServerError()) {
             LOG.error("business exception [{}]: {}", exception.code(), exception.getMessage(), exception);

@@ -195,7 +195,7 @@ public class BillingController {
         try {
             return ResponseEntity.ok(Result.ok(action.get()));
         } catch (BusinessException exception) {
-            if ("BILL_STATE_INVALID".equals(exception.code())) {
+            if ("BILL-409".equals(exception.code())) {
                 return ResponseEntity.status(HttpStatus.CONFLICT)
                         .body(Result.fail(exception.code(), exception.getMessage()));
             }
