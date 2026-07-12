@@ -19,6 +19,7 @@ import com.platform.pipeline.storage.tier.TieredStorageRouter;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +33,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StorageServiceTest {
@@ -113,6 +115,54 @@ class StorageServiceTest {
         assertEquals(LifecycleAction.ARCHIVE, manager.scan(old));
         assertEquals(LifecycleAction.DESTROY, manager.scan(expired));
         assertEquals(3, manager.events().size());
+    }
+
+    @Test
+    void lifecycleDestroyCreatesProofHashAndPersistsEvidence() {
+        MutableClock clock = new MutableClock();
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:lifecycle-proof;MODE=MySQL;DB_CLOSE_DELAY=-1");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        jdbcTemplate.execute("""
+                CREATE TABLE t_lifecycle_record (
+                    id BIGINT PRIMARY KEY,
+                    asset_code VARCHAR(64) NOT NULL,
+                    action VARCHAR(32) NOT NULL,
+                    operated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    operator VARCHAR(64),
+                    reason VARCHAR(256),
+                    proof_hash VARCHAR(64),
+                    object_key VARCHAR(256)
+                )
+                """);
+        DataLifecycleManager manager = new DataLifecycleManager(
+                new LifecyclePolicy(Duration.ofDays(10), Duration.ofDays(30)), clock, jdbcTemplate);
+        DataAsset expired = new DataAsset("asset-proof", Map.of("id", "9"), Set.of(),
+                clock.instant().minus(Duration.ofDays(31)));
+
+        assertEquals(LifecycleAction.DESTROY, manager.scan(expired, "ops-user", "retention-expired", "cold/asset-proof.data"));
+
+        assertEquals(1, manager.events().size());
+        String proofHash = manager.events().get(0).proofHash();
+        assertNotNull(proofHash);
+        assertEquals(64, proofHash.length());
+        assertEquals(proofHash, DataLifecycleManager.proofHash("asset-proof", LifecycleAction.DESTROY,
+                "ops-user", "retention-expired", clock.instant(), "cold/asset-proof.data"));
+        assertNotEquals(proofHash, DataLifecycleManager.proofHash("asset-proof", LifecycleAction.DESTROY,
+                "ops-user", "tampered", clock.instant(), "cold/asset-proof.data"));
+        assertNotEquals(
+                DataLifecycleManager.proofHash("asset-proof", LifecycleAction.DESTROY,
+                        "ops-user", "x", clock.instant(), "y|" + clock.instant() + "|z"),
+                DataLifecycleManager.proofHash("asset-proof", LifecycleAction.DESTROY,
+                        "ops-user", "x|" + clock.instant() + "|y", clock.instant(), "z"));
+        assertEquals(proofHash, jdbcTemplate.queryForObject(
+                "SELECT proof_hash FROM t_lifecycle_record WHERE asset_code = ?", String.class, "asset-proof"));
+        assertEquals("ops-user", jdbcTemplate.queryForObject(
+                "SELECT operator FROM t_lifecycle_record WHERE asset_code = ?", String.class, "asset-proof"));
+
+        JdbcTemplate restartedTemplate = new JdbcTemplate(dataSource);
+        assertEquals(1, restartedTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_lifecycle_record WHERE proof_hash = ?", Integer.class, proofHash));
     }
 
     private static class MutableClock extends Clock {

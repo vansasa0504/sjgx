@@ -47,6 +47,7 @@ kubectl -n sjgx-dev logs deployment/platform-b --tail=200
 
 ## 备份恢复
 
-- 数据库：按机构数据库方案执行全量 + 增量备份，恢复后校验 `t_raw_data`、`t_service_invoke_log`、`t_audit_log` 计数。
-- Redis：关键缓存可重建；消费方配额在 Redis 故障时降级为本地计数，故障恢复后重新使用 Redis 计数。
-- MinIO：归档数据按桶启用版本与生命周期策略。
+- 数据库：使用 `delivery/backup-restore/backup-db.sh` 执行开发/演练逻辑备份，生产环境按机构数据库物理备份或快照方案执行全量 + 增量备份；恢复使用 `restore-db.sh` 后校验 `t_raw_data`、`t_service_invoke_log`、`t_audit_log`、`t_lifecycle_record` 等关键表计数，并调用 `/api/v1/stats/audit/verify` 验证审计链。
+- Redis：关键缓存可重建；消费方配额在 Redis 故障时降级为本地计数，故障恢复后重新使用 Redis 计数。精确重建按生产 RDB/AOF 或周期窗口策略执行。
+- MinIO：使用 `delivery/backup-restore/backup-minio.sh`/`restore-minio.sh` 做对象镜像演练；生产桶必须启用版本、生命周期策略、对象锁（如合规要求）与异地复制。
+- 演练：按 `delivery/backup-restore/runbook.md` 记录备份文件、恢复耗时、RPO/RTO、关键表计数、审计链 verify 结果和销毁证明抽样。

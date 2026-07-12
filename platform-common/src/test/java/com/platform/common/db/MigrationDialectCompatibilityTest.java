@@ -28,6 +28,7 @@ class MigrationDialectCompatibilityTest {
         assertPrimaryKeyContains(jdbcTemplate, "T_AUDIT_LOG", "CREATED_AT");
         assertPrimaryKeyContains(jdbcTemplate, "T_RAW_DATA", "CREATED_AT");
         assertArchiveTables(jdbcTemplate);
+        assertLifecycleProofColumns(jdbcTemplate);
     }
 
     @Test
@@ -42,6 +43,7 @@ class MigrationDialectCompatibilityTest {
         assertPrimaryKeyContains(jdbcTemplate, "T_AUDIT_LOG", "CREATED_AT");
         assertPrimaryKeyContains(jdbcTemplate, "T_RAW_DATA", "CREATED_AT");
         assertArchiveTables(jdbcTemplate);
+        assertLifecycleProofColumns(jdbcTemplate);
     }
 
     @Test
@@ -238,6 +240,17 @@ class MigrationDialectCompatibilityTest {
                 WHERE TABLE_NAME IN ('T_SERVICE_INVOKE_LOG_ARCHIVE', 'T_AUDIT_LOG_ARCHIVE')
                 """, Integer.class);
         assertEquals(2, count);
+    }
+
+    private void assertLifecycleProofColumns(JdbcTemplate jdbcTemplate) {
+        for (String column : List.of("OPERATOR", "REASON", "PROOF_HASH", "OBJECT_KEY")) {
+            Integer count = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = ? AND COLUMN_NAME = ?
+                    """, Integer.class, "T_LIFECYCLE_RECORD", column);
+            assertTrue(count != null && count == 1, "t_lifecycle_record should contain " + column);
+        }
     }
 
     private JdbcDataSource dataSource(String name, boolean mysqlMode) {
