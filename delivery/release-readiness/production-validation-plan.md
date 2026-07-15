@@ -43,7 +43,7 @@
 | 字段 | 内容 |
 |---|---|
 | 覆盖 | G-PERF-01；NFR-P01~P07 |
-| 前置/授权/窗口 | 完整 PROD_EQ 服务、监控、DB/Redis/消息；性能测试授权与独占窗口；数据清理批准 |
+| 前置/授权/窗口 | RISK-F-05 connector 批量读取能力改造完成且 FUNCTION_GAP 已关闭；完整 PROD_EQ 服务、监控、DB/Redis/消息；性能测试授权与独占窗口；数据清理批准 |
 | 数据/拓扑/版本/资源 | 记录 1/3/5/8 副本、DB/Redis 规格；千万/亿级查询集、100 万真实 connector 批次、P04/P05 等比例数据、10TB 级缓存验证方案；版本均 TBD |
 | 既有材料 | `perf/p2-02-report.md`、`perf/runbook.md`、`perf/report-template.md`、`perf/jmeter/m5-performance.jmx`、`perf/monitor/collect-metrics.sh` |
 | 步骤/计时 | 低并发冒烟；阶梯加压；批量中断并恢复；接入/ETL；缓存容量/命中/时延；千万/亿级查询与 EXPLAIN。每阶段在稳态采样窗开始/结束计时 |
@@ -60,7 +60,7 @@
 | 覆盖 | G-A01；NFR-A01；原始 §6.2 |
 | 前置/授权/窗口 | 生产等价完整拓扑、稳定负载模型、全链路监控/告警、48h 连续窗口和事件处置授权 |
 | 数据/拓扑/版本/资源 | 固定候选版本、目标副本/中间件/数据库规格、代表性数据量与业务比例，全部记录在受控执行单 |
-| 既有材料 | `delivery/stability-test-plan.md`、`perf/monitor/collect-metrics.sh`、`delivery/ops-manual.md` |
+| 既有材料 | `delivery/stability-test-plan.md`、`perf/monitor/collect-metrics.sh`、`delivery/ops-manual.md`。风险提示：`collect-metrics.sh` 对多 measurement 指标可能写入 `NA`；执行前须修复采集逻辑，或由执行/复核角色逐项人工核验原始指标，`NA` 不得作为达标证据 |
 | 步骤/计时 | 健康基线→启动代表性负载并记录 T0→连续 48h 监测→T1 停止→核对数据、事件、泄漏和性能趋势 |
 | 采集/归档 | 可用率、宕机、错误率、延迟、吞吐、资源/GC、告警/工单；`CONTROLLED-LOCATION-TBD` |
 | PASS/FAIL | 48h 无宕机、无内存泄漏、无明显性能下降且核心指标稳定；可用性要求满足；否则 FAIL |
@@ -75,7 +75,7 @@
 | 覆盖 | G-A02~G-A05、G-ROLLBACK-01；NFR-A02~A05 |
 | 前置/授权/窗口 | 隔离 PROD_EQ K8s、真实主备 DB、Redis/Kafka、双活拓扑；故障注入/变更批准；独立回退操作者待命 |
 | 数据/拓扑/版本/资源 | 记录节点/副本、主备/复制、队列/缓存、跨站点链路、候选/回退版本及校验数据集 |
-| 既有材料 | `delivery/p2-03-report.md`、`delivery/chaos-drill/chaos-report-template.md`、`delivery/chaos-drill/node-down.sh`、`delivery/chaos-drill/db-failover.sh`、`delivery/chaos-drill/redis-down.sh`、`delivery/chaos-drill/kafka-outage.sh`、`delivery/chaos-drill/dual-active-switch.sh`、`delivery/chaos-drill/rolling-upgrade.sh`、`delivery/upgrade-rollback-drill.md` |
+| 既有材料 | `delivery/p2-03-report.md`、`delivery/chaos-drill/chaos-report-template.md`、`delivery/chaos-drill/node-down.sh`、`delivery/chaos-drill/db-failover.sh`、`delivery/chaos-drill/redis-down.sh`、`delivery/chaos-drill/kafka-outage.sh`、`delivery/chaos-drill/dual-active-switch.sh`、`delivery/chaos-drill/rolling-upgrade.sh`、`delivery/upgrade-rollback-drill.md`。风险提示：`delivery/chaos-drill/db-failover.sh`/`delivery/chaos-drill/redis-down.sh`/`delivery/chaos-drill/kafka-outage.sh`/`delivery/chaos-drill/dual-active-switch.sh` 存在吞掉校验失败或仅打印 RTO 的路径；执行前须修复退出/断言逻辑，或由执行/复核角色人工核验每条原始命令、健康/一致性结果和计时，脚本退出码 0 不得单独作为 PASS 证据 |
 | 步骤/计时 | 每类故障单独批准；记录注入 T0、业务恢复 T1、数据一致 T2；依次验证单服务/节点、DB、Redis、Kafka、双活；最后执行滚动升级与回退并单独计时 |
 | 采集/归档 | 可用性、切换/恢复时间、丢失/重复、一致性、积压、告警、回退耗时；`CONTROLLED-LOCATION-TBD` |
 | PASS/FAIL | 核心≥99.99%；单节点≤30s、集群≤5min、零丢失；RPO≤5min/RTO≤30min；升级无中断且回退≤10min；任一不满足即 FAIL |
@@ -93,7 +93,7 @@
 | 既有材料 | `security/p2-04-report.md`、`security/reports/sca-summary.md`、`security/owasp-zap.md`、`security/manual-pentest-checklist.md`、`delivery/p2-05-report.md` |
 | 步骤/计时 | 后端 SCA→高危处置复扫；授权 DAST/手工测试；MFA/IAM/SSO/字段 ABAC/证书正反例；TLS1.2+；审计禁改/三年留存；流量清洗；第三方等保材料核验。各阶段单独记录起止 |
 | 采集/归档 | SCA/DAST 原始报告、漏洞闭环、权限矩阵、TLS 握手摘要、审计策略/篡改尝试、等保材料编号；`CONTROLLED-LOCATION-TBD` |
-| PASS/FAIL | 无未处置严重/高危；全部安全控制和 NFR 阈值满足；第三方材料范围匹配。否则 FAIL；功能未实现仍 BLOCKED |
+| PASS/FAIL | 无未处置严重/高危；高危漏洞从确认发现到修复并复扫关闭≤24h，时间记录可复核；全部安全控制和 NFR 阈值满足；第三方材料范围匹配；已取得覆盖候选版本和批准范围的定期安全检测报告。任一不满足即 `FAIL`；功能未实现、24h 时间证据或定期检测报告缺失仍 `BLOCKED` |
 | 停止条件 | 扫描越权、影响非目标、发现秘密/严重漏洞、审计数据损坏或授权撤回 |
 | 清理/回退 | 停止扫描，隔离发现项，恢复安全基线，吊销临时身份/证书并按事件流程处置 |
 | 角色/状态 | 执行：安全测试负责人/第三方；复核：安全负责人/合规负责人；`BLOCKED` |
@@ -117,12 +117,12 @@
 | 字段 | 内容 |
 |---|---|
 | 覆盖 | G-C01、G-C03；NFR-C01、C03 |
-| 前置/授权/窗口 | 麒麟/UOS、达梦/OceanBase、X86/ARM 及目标部署模式可用；批准的浏览器/移动设备版本矩阵 |
-| 数据/拓扑/版本/资源 | 逐组合记录 OS/CPU/DB/中间件/浏览器/设备版本、资源和候选构建；使用脱敏基准数据 |
+| 前置/授权/窗口 | 麒麟/UOS、达梦/OceanBase、目标国产中间件、X86/ARM 及目标部署模式可用；机构确认 SUNDB 是否纳入合同/目标范围，纳入时环境必须可用；批准的浏览器/移动设备版本矩阵 |
+| 数据/拓扑/版本/资源 | 逐组合记录 OS/CPU/DB/国产中间件/浏览器/设备版本、资源和候选构建；SUNDB 在选定时作为独立 DB 组合记录，未选定须保存机构范围确认；使用脱敏基准数据 |
 | 既有材料 | `delivery/deployment-guide.md`、`delivery/acceptance-report.md`、`reviews/claude-review-P2-01-返工复审.md` |
-| 步骤/计时 | 各平台部署/迁移/启动/主链路/重启/性能冒烟；Chrome/Edge/Firefox 主流程与边界；移动端监控和预警；每组合记录起止 |
-| 采集/归档 | 安装/迁移日志、功能结果、截图/录屏编号、缺陷、资源和兼容矩阵；`CONTROLLED-LOCATION-TBD` |
-| PASS/FAIL | 所有承诺组合关键路径通过且无阻断兼容缺陷；任一必要组合失败即 FAIL |
+| 步骤/计时 | 各 OS/CPU/达梦/OceanBase/国产中间件组合执行部署、迁移、启动、主链路、重启和性能冒烟；SUNDB 若纳入合同/目标范围则按相同规则独立执行；Chrome/Edge/Firefox 主流程与边界；移动端监控和预警；每组合记录起止 |
+| 采集/归档 | 安装/迁移日志、国产中间件适配与功能结果、SUNDB 适用范围确认及选定时的实测结果、截图/录屏编号、缺陷、资源和兼容矩阵；`CONTROLLED-LOCATION-TBD` |
+| PASS/FAIL | 所有承诺的 OS/CPU/DB/国产中间件/部署模式组合关键路径通过且无阻断兼容缺陷；SUNDB 未纳入合同/目标范围时须有机构书面确认，纳入时必须实测通过；任一必要组合失败即 `FAIL`，适用范围或环境未确认保持 `BLOCKED` |
 | 停止条件 | 迁移风险、数据不一致、平台不受支持、严重 UI/安全问题或授权撤回 |
 | 清理/回退 | 卸载测试部署或恢复快照/基线版本，清理脱敏数据并核对环境 |
 | 角色/状态 | 执行：兼容测试负责人；复核：架构负责人/业务验收人；`BLOCKED` |
@@ -163,7 +163,7 @@
 | 覆盖 | G-PERSIST-01、G-OPS-01、G-A03/A04、G-S02/G01；NFR-A03/A04/S02/G01 |
 | 前置/授权/窗口 | PROD_EQ 达梦/OceanBase 备份系统、MinIO 版本/对象锁/复制、隔离恢复目标、审计与销毁审批、恢复窗口 |
 | 数据/拓扑/版本/资源 | 记录全量+增量/日志策略、DB/MinIO 拓扑、主链路重启校验数据集及事务边界样本、备份时间点、候选版本；生产原件不入 Git |
-| 既有材料 | `delivery/p2-05-report.md`、`delivery/backup-restore/backup-restore-plan.md`、`delivery/backup-restore/runbook.md` |
+| 既有材料 | `delivery/p2-05-report.md`、`delivery/backup-restore/backup-restore-plan.md`、`delivery/backup-restore/runbook.md`。风险提示：`delivery/backup-restore/restore-db.sh` 仅输出恢复后目标计数，缺少源/目标计数或哈希一致性断言时仍可能在未形成完整一致性证据的情况下结束；执行前须修复校验，或由执行/复核角色人工取得源/目标计数与哈希原始证据并独立判定，退出码 0 不得单独作为 PASS 证据 |
 | 步骤/计时 | 先在 PROD_EQ 主链路提交成功事务、保留未提交/回滚事务边界样本并记录重启前基线 T-R0→执行应用重启→服务恢复 T-R1→逐笔核对已提交/未提交/回滚数据、约束/索引/分区及业务查询；该重启验证独立于备份恢复。随后执行备份基线→记录故障点 T0→DB/MinIO 恢复→服务可用 T1→数据/审计链一致 T2→留存与 DB 禁改核验→销毁证明抽样 |
 | 采集/归档 | 应用重启起止、重启前后主链路逐笔数据与事务边界对账、约束/索引/分区对比；RPO/RTO、表/对象计数与哈希、审计链、留存策略、禁改尝试、proof_hash 与审批记录；`CONTROLLED-LOCATION-TBD` |
 | PASS/FAIL | 重启维度须在 PROD_EQ 证明重启前后主链路已提交数据零丢失、未提交/回滚事务未错误落库、事务边界一致，约束/索引/分区完整；不得以备份恢复或 DEV 重启替代。恢复维度须满足零丢失、RPO≤5min/RTO≤30min、审计链完整且三年留存/不可篡改、抽样证明一致；任一已执行判定不满足即 `FAIL`，目标环境或原始证据缺失保持 `BLOCKED` |
@@ -187,6 +187,13 @@
 | 角色/状态 | 执行：运维/培训/易用性测试负责人；复核：交付/业务验收人；`BLOCKED` |
 
 ## 3. 校验记录
+
+### 本轮实际静态检查
+
+| 命令 | 输出摘要 | 退出码 |
+|---|---|---:|
+| `git diff --check` | 无空白错误；仅输出 Git LF/CRLF 转换警告 | 0 |
+| PowerShell 内联结构检查：`Get-ChildItem` + `[regex]` 核对 FR/NFR/原子门禁/§8.5 关键项 | `FILES=7; FR_UNIQUE=46; FR_ROWS_COLUMNS=46/46; NFR_UNIQUE=24; ATOMIC_GATES=27; FOLLOWUP_TOKENS=12/12; FOLLOWUP_CHECK=PASS` | 0 |
 
 - 已覆盖 24 个唯一 NFR 编号，拆分为 27 条原子门禁；其中 NFR-E01~E03 由独立 `PV-ARCH` 卡分别覆盖目标 PROD_EQ 扩缩容无中断、接入效率/可视化覆盖率及 PB 级多引擎验证。`PV-PERF` 已补充日志聚合五项指标与判定，`PV-DB` 已覆盖空库/旧库升级/目标库设三方比对，`PV-RESTORE` 已补充 PROD_EQ 主链路重启与事务边界验证，`PV-FUNC` 已按九大模块覆盖 46 FR；对应 G-PERF-01/G-DB-01/G-PERSIST-01/G-FUNC-01 均已有专用补测动作。
 - 每卡均包含前置/授权/窗口、环境数据、步骤/计时、指标/归档、PASS/FAIL、停止、清理/回退、执行/复核角色和初始 `BLOCKED`。

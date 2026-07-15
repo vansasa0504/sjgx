@@ -741,3 +741,100 @@ git diff --stat  -> docs/requirements.md +138, tasks/requirement-analysis.md +10
 2. **不自动转 PASS**：G-RLS-03/G-R05 仍须执行角色逐卡走查；G-RLS-05 仍须发布管理制度和有权角色确认；其余 G-RLS/G-R 门禁须以矩阵定义的最低证据重新独立审查判定。
 3. **推进 P2 跟进项**：建议在补测执行前处理准入算法类（F-12/F-27/F-28/F-29），可由 Claude Code 派发新一轮 Codex 任务或由机构角色处理；其余 P2/P3 视优先级跟进。
 4. **不签发正式上线批准**。正式准入须在机构提供环境、授权、实测证据与审批流程后，由有权角色作出。
+
+---
+
+## 17. P2/P3 跟进项复验记录（§8.5 返工后，2026-07-15）
+
+> 复验范围：Codex 按 `tasks/codex-task-P3-Release-01.md` §8.5 完成的 P2/P3 跟进项文档修复（A 准入算法 + B 补测卡精度 + C 字段证据 + D 兼容合规，共 15 项）。当前分支 `ai/p3-p2-followup`，任务单已单独提交（`ec8b9adc`），7 份 P3 文档未提交修改（+137/-84）。复验含 Claude Code 直接逐项追踪 + 对抗式检查。未执行任何生产/外部操作。
+>
+> **说明**：本轮另派独立对抗式子代理 p2-adversary 做第二意见，但其结论未通过消息回传（多次 idle 通知无正文，SendMessage 索取后仍仅回 idle）。最终结论基于 Claude Code 直接逐项追踪与对抗式检查的已证实事实；子代理结论未纳入，不构成虚假证据。
+
+### 17.1 范围与 Git 状态
+
+- 分支 `ai/p3-p2-followup`；任务单 §8.5 已单独提交（`ec8b9adc docs: add P2 P3 follow-up task`）。
+- 未提交改动：7 份 `delivery/release-readiness/` Markdown（+137/-84）；`git diff --check` exit 0。
+- 无上游4文件/业务代码/迁移/`k8s/prod`/密钥/脚本/`acceptance-report.md`/P0-P2 历史结论改动（范围干净）。
+
+### 17.2 §8.5 的 15 项逐项核验
+
+| 组 | 项 | 复验位置 | 结果 |
+|---|---|---|---|
+| A 准入算法 | F-12/F-27 | checklist §1 规则2/3 | 通过：规则2 拦截"未取得完整书面豁免的阻断 BLOCKED" + 交叉查矩阵与台账；规则3 明确 `MAY_WAIVE+BLOCKED`（RISK-T-01~T-07）不准入至获批 WAIVED 或关闭 |
+| | F-28 | checklist §1 规则4 | 通过：回退决策人未指定/触发条件未确认 -> 不准入 |
+| | F-29 | matrix G-RLS-05 | 通过：现有证据改 `CONTROLLED-LOCATION-TBD`（机构发布管理制度）；checklist 仅为模板不得作 PASS 证据，自证循环消除 |
+| B 补测卡精度 | F-06 | production-validation-plan PV-STABLE/AVAIL/RESTORE 既有材料 + gap RISK-T-08 | 通过：3 卡标注 6 脚本误报风险（collect-metrics NA、4 chaos 脚本吞失败+RTO、restore-db 无源/目标计数/哈希）；RISK-T-08 新增（BLOCK）；"退出码 0 不得单独作 PASS 证据" |
+| | F-07 | 7/7 文档"本轮实际静态检查" | 通过：全 7 文档补命令/输出摘要/退出码留痕 |
+| | F-19 | production-validation-plan PV-PERF 前置 | 通过：补"RISK-F-05 connector 批量能力改造完成且 FUNCTION_GAP 已关闭" |
+| C 字段/证据 | F-09 | fr-evidence-index FR-505/606 | 通过：FR-505 标"无可定位开发证据"+锚定 acceptance-report §"功能验收"；FR-606 锚定 p2-05-report §1/§2/§3 |
+| | F-14 | gap RISK-T-02/06/07 | 通过：3 项改 BLOCK（影响审计/安全），与 RISK-V-07（BLOCK）矛盾消除；非安全类 T-01/03/04/05 保持 MAY_WAIVE/NON_BLOCKING，无新不一致 |
+| | F-15 | fr-evidence-index FR-603 | 通过：TLS 显式标"无开发代码证据，待 PROD_EQ 配置核查（RISK-V-06）" |
+| | F-17 | fr-evidence-index 表头 | 通过：拆"证据类（Evidence class）｜环境（Environment）"，填值 DEV_TEST｜DEV，匹配 plan §4.2.1 |
+| D 兼容/合规 | F-20 | matrix G-C01/PV-COMP | 通过：补"国产中间件"独立兼容维度 |
+| | F-21 | matrix G-S03/PV-SEC | 通过：补"高危漏洞 24h 修复"时限 + "定期安全检测报告"交付物 |
+| | F-22 | matrix G-C01/PV-COMP | 通过：补"SUNDB 可选" + "合同/目标范围选定时纳入必测" |
+| | F-23 | gap RISK-X-07 | 通过：新增 EXTERNAL_DEPENDENCY"ISO27001 属供应商资质" |
+| | F-24 | matrix G-ROLLBACK-01 | 通过：来源"发布要求"改 `docs/development-process-workflow.md` §9 |
+
+### 17.3 对抗式证伪
+
+| 反例 | 验证 | 结果 |
+|---|---|---|
+| A 准入算法只加文字不生效 | 读 checklist §1 规则2/3 文本与 RISK-T 处置 | 已反驳：规则3 显式列举 RISK-T-01~T-07 不准入至 WAIVED/关闭 |
+| F-29 G-RLS-05 仍自证 | 读 matrix G-RLS-05 现有证据 | 已反驳：改 CONTROLLED-LOCATION-TBD，checklist 标"仅为模板不得作 PASS 证据" |
+| F-06 脚本风险标注不全/不准 | 核对 6 脚本误报点 vs PV-STABLE/AVAIL/RESTORE + RISK-T-08 | 已反驳：6 脚本误报点全覆盖，准确 |
+| F-07 校验记录只部分文档 | `rg "本轮实际静态检查" -l` 7/7 | 已反驳：全 7 文档留痕 |
+| F-17 填值仍错配 | 读表头与填值 | 已反驳：DEV_TEST｜DEV 匹配 §4.2.1 |
+| F-14 改 BLOCK 引起新不一致 | 核对 RISK-T-01~T-08 处置 | 已反驳：安全/审计类 BLOCK、非安全类 MAY_WAIVE/NON_BLOCKING，分类合理无新矛盾 |
+| 越界改上游/脚本/历史 | `git status` | 已反驳：只 7 份 P3 文档 |
+| 新增文件 | `ls` | 已反驳：仍 7 份 |
+| 24/27 口径漂移 | `rg` | 已反驳：7/7 一致 |
+| 敏感信息 | 扫描 | 已反驳：0 命中 |
+| 虚构结果 | 读改动 | 已反驳：全 BLOCKED，日期/执行者 TBD |
+
+### 17.4 范围与真实性
+
+- diff 仅 7 份 P3 文档（+137/-84）；无上游/脚本/`acceptance-report.md`/历史结论改动。
+- 无敏感信息；无虚构；所有门禁仍 `BLOCKED`；24/27 口径 7/7 一致；交付包仍 7 份。
+- RISK-T 处置一致：安全/审计防篡改类（T-02/06/07/08）`BLOCK`，非安全类（T-01/03/04/05）`MAY_WAIVE`/`NON_BLOCKING`。
+
+### 17.5 静态检查
+
+| 检查 | 结果 |
+|---|---|
+| `git diff --check` | 通过（exit 0） |
+| 15 项逐项核验 | 全通过 |
+| F-07 7/7 文档留痕 | 通过 |
+| 24/27 口径 7/7 | 通过 |
+| 敏感信息 | 0 命中 |
+| 范围越界 | 无 |
+| 上游4文件未改 | 通过 |
+| Maven/npm/压测/DAST/演练/恢复/联调/发布 | 未运行（任务不要求），如实记录 |
+
+### 17.6 复审结论
+
+```text
+✓ P2/P3 跟进项文档修复复审通过（§8.5 的 15 项全部闭环，无存活 P1/P2 阻断项）
+- 总体状态仍 NOT_READY / BLOCKED
+- 不签发正式上线批准
+```
+
+**理由**：
+
+1. **需求覆盖**：§8.5 的 15 项（A/B/C/D 四组）全部落地且质量达标，首轮审查列出的 P2/P3 改进项（AD-06~AD-23 对应）已闭环。
+2. **任务边界**：未越界；diff 仅 7 份 P3 文档；上游4文件/脚本/`acceptance-report.md`/历史结论未改。
+3. **测试**：`git diff --check` 通过；静态自检全通过。
+4. **安全与真实性**：无敏感信息；无虚构；RISK-T 处置一致合理；准入算法漏洞（F-12/27/28/29）已补强生效。
+5. **对抗式**：11 类反例全部反驳；已主动证伪。**独立对抗式子代理结论未回传（多次 idle 通知无正文），最终结论基于 Claude Code 直接逐项追踪与对抗式检查的已证实事实，不构成虚假证据。**
+
+**重要口径声明**：
+- **P2 文档修复通过 ≠ 可上线**。门禁矩阵总状态仍 `NOT_READY / BLOCKED`。
+- **本复审不授权任何 G-RLS/G-R 门禁转 PASS**。G-RLS-03/G-R05 仍须执行角色逐卡走查；G-RLS-05 仍须发布管理制度和有权角色确认。
+- **不签发正式上线批准**。
+
+### 17.7 下一步
+
+1. **可建议提交** P2 改动（7 份文档）到 `ai/p3-p2-followup` 分支并推送/创建 PR 合并 master。提交前排除 `.claude/worktrees/`，确认 `git diff --cached --check` 通过。
+2. **机构角色任务**（§8.7，非 Codex）：F-02 走查、F-03 复核、F-05 机构确认、F-25/F-26 脚本修复，待派发相应角色/独立任务。
+3. **不自动转 PASS**：G-RLS-03/G-R05 仍须执行角色走查；G-RLS-05 仍须发布管理制度确认。
+4. **不签发正式上线批准**。正式准入须在机构提供环境、授权、实测证据与审批流程后，由有权角色作出。

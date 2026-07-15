@@ -16,7 +16,7 @@
 | G-COMPLY-01 | 流程 §9；NFR-G01 | trace 可追溯，监管报表可生成并满足合规 | PROD_EQ trace/报表证据+机构/第三方合规材料 | `delivery/p1-acceptance-summary.md`（Mock/DEV） | BLOCKED | 阻断；真实报送与测评缺失 | 合规负责人 | 提供规范、完成联调和合规审查；TBD |
 | G-OPS-01 | 流程 §9；NFR-M01 | 健康、日志、指标、告警、备份恢复可用 | PROD_EQ 运维演练、告警工单、恢复原始记录 | `delivery/ops-manual.md`；`delivery/p2-05-report.md`（文档/DEV） | BLOCKED | 阻断；目标环境运维闭环未演练 | 运维负责人 | 执行稳定性、告警、备份恢复；TBD |
 | G-DOC-01 | 原始 §6.3；NFR-M01/U01 | 文档完整、准确、可操作、版本一致，培训完成 | 候选版本文档审查+培训/考核受控记录 | `delivery/release-readiness/delivery-service-evidence.md` | BLOCKED | 阻断；培训、合同、服务证据缺失 | 交付负责人 | 完成交付清单并取得签署；TBD |
-| G-ROLLBACK-01 | NFR-A05；发布要求 | 滚动无中断、回滚≤10min，角色和触发条件明确 | PROD_EQ 升级/回退计时原始记录+审批 | `delivery/upgrade-rollback-drill.md`；脚本仅就绪 | BLOCKED | 阻断；未实测、无变更窗口 | 运维负责人 | 执行 PV-AVAIL 的升级回退卡；TBD |
+| G-ROLLBACK-01 | NFR-A05；`docs/development-process-workflow.md` §9 | 滚动无中断、回滚≤10min，角色和触发条件明确 | PROD_EQ 升级/回退计时原始记录+审批 | `delivery/upgrade-rollback-drill.md`；脚本仅就绪 | BLOCKED | 阻断；未实测、无变更窗口 | 运维负责人 | 执行 PV-AVAIL 的升级回退卡；TBD |
 
 ## 2. NFR 原子门禁
 
@@ -39,11 +39,11 @@
 | G-A05 | NFR-A05 | 灰度/滚动无中断，回滚≤10min | PROD_EQ 升级回退计时与健康记录 | `delivery/p2-03-report.md` | BLOCKED | 阻断；未实测 | 运维负责人 | PV-AVAIL；TBD |
 | G-S01 | NFR-S01 | MFA、IAM/SSO、RBAC+字段 ABAC、OAuth2/API Key/证书 | PROD_EQ 权限矩阵、IAM 联调、证书认证结果 | `security/p2-04-report.md` | BLOCKED | 阻断；MFA/IAM/ABAC/证书为功能缺口 | 安全负责人 | 独立实现后 PV-SEC；TBD |
 | G-S02 | NFR-S02 | TLS1.2+、SM4、动态/静态脱敏、审计≥3年不可篡改 | PROD_EQ 配置/密码学/审计留存证据 | `delivery/p2-05-report.md`（DEV） | BLOCKED | 阻断；TLS、留存、DB 禁改缺证 | 安全/合规负责人 | PV-SEC/PV-RESTORE；TBD |
-| G-S03 | NFR-S03 | SQLi/XSS/CSRF/防刷、等保三级 | 后端 SCA、授权 DAST、流量控制及第三方等保材料 | `security/p2-04-report.md` | BLOCKED | 阻断；SCA/DAST/等保未完成 | 安全负责人 | PV-SEC；TBD |
+| G-S03 | NFR-S03 | SQLi/XSS/CSRF/防刷、等保三级；高危漏洞 24h 内修复并定期安全检测 | 后端 SCA、授权 DAST、流量控制、第三方等保材料、高危漏洞发现至复扫关闭≤24h 的时间证据及定期安全检测报告 | `security/p2-04-report.md` | BLOCKED | 阻断；SCA/DAST/等保、24h 闭环和定期检测报告未完成 | 安全负责人 | PV-SEC；TBD |
 | G-E01 | NFR-E01 | 微服务/容器/弹性/水平扩展且无中断 | PROD_EQ 架构评审和扩缩容实测 | `delivery/system-architecture.md`（设计） | BLOCKED | 阻断；设计不能替代实测 | 架构负责人 | 执行 `production-validation-plan.md` 的 `PV-ARCH` E01；TBD |
 | G-E02 | NFR-E02 | SDK；新接口≤3工作日；80%可视化；开放 API/插件 | PROD_EQ 接入演练、覆盖统计和业务签署 | `delivery/dev-guide.md`（文档） | BLOCKED | 阻断；无验收统计 | 架构/业务验收人 | 执行 `production-validation-plan.md` 的 `PV-ARCH` E02；TBD |
 | G-E03 | NFR-E03 | 分布式、PB 级、多引擎 | PROD_EQ 架构评审和容量/引擎验证 | `delivery/system-architecture.md`（设计） | BLOCKED | 阻断；无 PB/多引擎实证 | 架构负责人 | 执行 `production-validation-plan.md` 的 `PV-ARCH` E03；TBD |
-| G-C01 | NFR-C01 | 麒麟/UOS、达梦/OceanBase、X86/ARM、多部署模式 | 目标环境兼容矩阵原始结果 | `delivery/acceptance-report.md` | BLOCKED | 阻断；实际环境未测 | 兼容测试负责人 | PV-COMP；TBD |
+| G-C01 | NFR-C01 | 麒麟/UOS、达梦/OceanBase、国产中间件、X86/ARM、多部署模式；SUNDB 可选 | 目标环境兼容矩阵原始结果；SUNDB 仅在合同/目标范围选定时纳入必测 | `delivery/acceptance-report.md` | BLOCKED | 阻断；实际环境及国产中间件未测，SUNDB 适用范围待机构确认 | 兼容测试负责人 | PV-COMP；TBD |
 | G-C02 | NFR-C02 | 中台/大数据/核心/风控/营销/财务/认证对接 | 各真实系统联调记录 | `delivery/p1-acceptance-summary.md`（Mock） | BLOCKED | 阻断；规范/环境缺失 | 机构接口负责人 | 提供规范后联调；TBD |
 | G-C03 | NFR-C03 | Chrome/Edge/Firefox 最新版、移动端监控预警 | 目标版本浏览器/设备兼容矩阵 | `delivery/acceptance-report.md`（前端单测） | BLOCKED | 阻断；未实测 | 兼容测试负责人 | PV-COMP；TBD |
 | G-M01 | NFR-M01 | 全链路监控、集中日志、可视化运维、五类文档 | PROD_EQ 运维演练+版本文档审查 | `delivery/ops-manual.md`；五类文档 | BLOCKED | 阻断；运维环境闭环/服务材料缺失 | 运维/交付负责人 | PV-OPS + 交付签署；TBD |
@@ -58,7 +58,7 @@
 | G-RLS-02 | RLS-02 | 全部门禁唯一状态且证据真实 | 独立矩阵审查通过 | 本文件 | BLOCKED | 阻断；待最终验收 | Claude Code | 复核并签署；TBD |
 | G-RLS-03 | RLS-03 | 未实测项均有可执行补测卡 | 执行负责人走查通过 | `production-validation-plan.md` | BLOCKED | 阻断；尚未走查/执行 | 测试/运维负责人 | 走查后安排授权；TBD |
 | G-RLS-04 | RLS-04 | 差距分类准确，无功能缺口伪装待测 | 安全/架构/接口负责人复核 | `gap-and-dependency-register.md` | BLOCKED | 阻断；待复核 | 安全/架构负责人 | 逐项确认；TBD |
-| G-RLS-05 | RLS-05 | 准入算法、角色、豁免、观察/回退完整 | 发布管理制度和有权角色确认 | `release-approval-checklist.md` | BLOCKED | 阻断；机构流程未确认 | 发布负责人 | 机构确认模板；TBD |
+| G-RLS-05 | RLS-05 | 准入算法、角色、豁免、观察/回退完整 | 发布管理制度和有权角色确认 | `CONTROLLED-LOCATION-TBD`（机构发布管理制度/有权角色确认）；`release-approval-checklist.md` 仅为模板，不得作为 PASS 证据 | BLOCKED | 阻断；机构流程未确认 | 发布负责人 | 机构确认正式制度、角色和受控审批材料；TBD |
 | G-RLS-06 | RLS-06 | 文档/培训/SLA/值守/巡检证据完整 | 交付审查及受控材料 | `delivery-service-evidence.md` | BLOCKED | 阻断；组织/合同材料缺失 | 交付负责人 | 补受控材料；TBD |
 | G-R01 | NFR-R01 | 证据可定位并含日期/环境/角色/完整性 | 独立抽样通过 | P3 七文档 | BLOCKED | 阻断；外部原始证据位置未登记 | 证据管理员 | 登记受控材料；TBD |
 | G-R02 | NFR-R02 | 无虚构生产结论 | 对照原始输出抽样通过 | P3 七文档 | BLOCKED | 阻断；待独立审查 | Claude Code | 真实性复核；TBD |
@@ -67,6 +67,13 @@
 | G-R05 | NFR-R05 | 计划含前置/步骤/指标/停止/回退/归档 | 执行角色逐卡走查通过 | `production-validation-plan.md` | BLOCKED | 阻断；尚未由执行角色走查 | 测试/运维负责人 | 逐卡走查；TBD |
 
 ## 4. NFR 计数说明与校验记录
+
+### 本轮实际静态检查
+
+| 命令 | 输出摘要 | 退出码 |
+|---|---|---:|
+| `git diff --check` | 无空白错误；仅输出 Git LF/CRLF 转换警告 | 0 |
+| PowerShell 内联结构检查：`Get-ChildItem` + `[regex]` 核对 FR/NFR/原子门禁/§8.5 关键项 | `FILES=7; FR_UNIQUE=46; FR_ROWS_COLUMNS=46/46; NFR_UNIQUE=24; ATOMIC_GATES=27; FOLLOWUP_TOKENS=12/12; FOLLOWUP_CHECK=PASS` | 0 |
 
 - `docs/requirements.md` §3 的 NFR 基线为 24 个唯一 NFR 编号：P01~P07、A01~A05、S01~S03、E01~E03、C01~C03、M01、U01、G01；本矩阵已全部映射。
 - 矩阵将 NFR-P01 的标准/定制接口阈值拆为 2 条，并将 NFR-P06 的命中率/查询时延/容量阈值拆为 3 条，共形成 27 条原子门禁；该拆分不新增 NFR 编号、不改变原阈值。G-E01~G-E03 的下一步均指向独立 `PV-ARCH` 卡。
