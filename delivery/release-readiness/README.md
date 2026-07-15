@@ -54,5 +54,12 @@
 
 ## 6. 校验记录
 
+### 本轮实际静态检查
+
+| 命令 | 输出摘要 | 退出码 |
+|---|---|---:|
+| `git diff --check` | 无空白错误；仅输出 Git LF/CRLF 转换警告 | 0 |
+| PowerShell 内联结构检查：`Get-ChildItem` + `[regex]` 核对 FR/NFR/原子门禁/§8.5 关键项 | `FILES=7; FR_UNIQUE=46; FR_ROWS_COLUMNS=46/46; NFR_UNIQUE=24; ATOMIC_GATES=27; FOLLOWUP_TOKENS=12/12; FOLLOWUP_CHECK=PASS` | 0 |
+
 - 本次仅进行了仓库本地静态检查；未执行 Maven/npm、压测、DAST/SCA、故障演练、恢复、外部联调或发布。
 - NFR 基线口径为 24 个唯一 NFR 编号，拆分为 27 条原子门禁；矩阵通过拆分 NFR-P01、NFR-P06 的复合阈值形成原子门禁，未虚构新编号。

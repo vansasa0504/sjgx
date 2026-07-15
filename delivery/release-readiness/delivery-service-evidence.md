@@ -43,6 +43,13 @@
 
 ## 5. 校验记录
 
+### 本轮实际静态检查
+
+| 命令 | 输出摘要 | 退出码 |
+|---|---|---:|
+| `git diff --check` | 无空白错误；仅输出 Git LF/CRLF 转换警告 | 0 |
+| PowerShell 内联结构检查：`Get-ChildItem` + `[regex]` 核对 FR/NFR/原子门禁/§8.5 关键项 | `FILES=7; FR_UNIQUE=46; FR_ROWS_COLUMNS=46/46; NFR_UNIQUE=24; ATOMIC_GATES=27; FOLLOWUP_TOKENS=12/12; FOLLOWUP_CHECK=PASS` | 0 |
+
 - NFR 基线口径统一为 24 个唯一 NFR 编号，拆分为 27 条原子门禁；本清单保留 NFR-M01/U01 对应的交付与服务证据边界。
 
 - 已定位五类现有产品文档，并覆盖测试/验收、四类培训、现场+线上、考核、7×24、响应/解决时限、月度远程/季度现场巡检、三年原厂运维和版本升级服务。
