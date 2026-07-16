@@ -1,7 +1,6 @@
 package com.platform.auth;
 
 import com.platform.common.auth.JwtUtil;
-import java.time.Clock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -17,10 +16,8 @@ public class AuthApplication {
     }
 
     @Bean
-    AuthService authService(@Autowired(required = false) JwtUtil jwtUtil,
+    AuthService authService(JwtUtil jwtUtil,
                             @Autowired(required = false) JdbcTemplate jdbcTemplate) {
-        JwtUtil util = jwtUtil != null ? jwtUtil
-                : new JwtUtil(System.getenv().getOrDefault("JWT_SECRET", "change-me-in-env"), Clock.systemUTC());
-        return new AuthService(util, jdbcTemplate);
+        return new AuthService(jwtUtil, jdbcTemplate);
     }
 }

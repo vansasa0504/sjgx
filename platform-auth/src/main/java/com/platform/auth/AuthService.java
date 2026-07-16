@@ -54,12 +54,16 @@ public class AuthService {
     }
 
     public String login(String username, String password) {
+        return jwtUtil.issue(username, authenticate(username, password), 3600);
+    }
+
+    public Set<String> authenticate(String username, String password) {
         UserAccount account = findUser(username);
         if (account == null || !PASSWORD_ENCODER.matches(password, account.passwordHash())) {
             throw new BusinessException("AUTH-401", "bad credentials");
         }
         AuditLogger.record("login", username);
-        return jwtUtil.issue(username, account.permissions(), 3600);
+        return Set.copyOf(account.permissions());
     }
 
     public String refresh(String token) {
@@ -80,6 +84,13 @@ public class AuthService {
 
     public AuthPrincipal parse(String token) {
         return jwtUtil.parse(token);
+    }
+    public Set<String> permissionsFor(String username) {
+        UserAccount account = findUser(username);
+        if (account == null) {
+            throw new BusinessException("AUTH-401", "user disabled");
+        }
+        return Set.copyOf(account.permissions());
     }
 
     public List<UserAccount> listUsers() {

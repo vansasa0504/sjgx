@@ -27,6 +27,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
     private static final List<String> WHITELIST = List.of(
             "/auth/**",
+            "/api/v1/auth/login/mfa",
+            "/api/v1/auth/login/cert",
+            "/api/v1/auth/sso/redirect",
+            "/api/v1/auth/sso/callback",
             "/actuator/health",
             "/actuator/health/**",
             "/api/v1/services/*/invoke"

@@ -24,6 +24,13 @@ class JwtUtilTest {
     }
 
     @Test
+    void missingOrWeakSecretFailsFastAtStartup() {
+        assertThrows(IllegalStateException.class, () -> new JwtUtil(null, Clock.systemUTC()));
+        assertThrows(IllegalStateException.class, () -> new JwtUtil("", Clock.systemUTC()));
+        assertThrows(IllegalStateException.class, () -> new JwtUtil("change-me-in-env", Clock.systemUTC()));
+    }
+
+    @Test
     void rejectsTamperedToken() {
         JwtUtil jwtUtil = new JwtUtil("secret", Clock.systemUTC());
         String token = jwtUtil.issue("admin", Set.of(), 60);

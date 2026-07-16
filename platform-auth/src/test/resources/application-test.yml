@@ -13,3 +13,12 @@ spring:
 security:
   jwt:
     secret: test-secret-123456
+  mfa:
+    sm4-key: test-only-sm4-key
+  cert:
+    truststore: ${java.home}/lib/security/cacerts
+    truststore-password: changeit
+  sso:
+    mock-enabled: true
+    issuer: https://mock-sso.invalid
+    client-id: test-client

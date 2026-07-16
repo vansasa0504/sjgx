@@ -26,8 +26,18 @@ spring:
 
 security:
   jwt:
-    secret: ${JWT_SECRET:change-me-in-env}
+    secret: ${JWT_SECRET}
     ttl-seconds: ${JWT_TTL_SECONDS:3600}
+  mfa:
+    sm4-key: ${MFA_SM4_KEY}
+  cert:
+    truststore: ${CERT_TRUSTSTORE}
+    truststore-password: ${CERT_TRUSTSTORE_PASSWORD:}
+    crl: ${CERT_CRL:}
+  sso:
+    mock-enabled: false
+    issuer: ${SSO_ISSUER:https://sso.invalid}
+    client-id: ${SSO_CLIENT_ID:placeholder}
 
 platform:
   db:
