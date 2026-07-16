@@ -1010,3 +1010,98 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 ---
 
 **下一步**：M7-D 二次审查**通过**，**M7 最终验收通过**。M7 全阶段（A/B/C/D）闭环，46 条 FR 覆盖、鉴权生效、189 测试全绿、端到端主链路打通。可提交 M7 改动。上线前处理遗留项（用户落表/invoke secret/种子数据/detail 异常类型）。
+
+---
+
+# Claude Code 审查结果 - fix-01 安全认证（第三轮返工复审）
+
+> 审查阶段：fix-01 第 3 轮返工（F-01 必修 + F-02 建议同轮，最后一次）
+> 审查日期：2026-07-16
+> 审查范围：`ai/fix-01-security-auth` 分支未提交改动（本轮增量聚焦 F-01/F-02）
+> 返工任务单：`tasks/codex-task-fix-01-rework-3.md`
+> 前序：原始（8 P1）→ 第 1 轮（1 P1 回归 + 1 相邻 P1）→ 第 2 轮（通过有条件，存活 P2-1/P2-2）→ **本轮**
+> 完整报告：`reviews/claude-review-fix-01-rework-3.md`（本节为摘要，详细对抗式反例与逐项核验见完整报告）
+
+## 1. 审查对象（本轮增量）
+
+| 文件 | 改动 |
+|---|---|
+| `AdvancedAuthService.java` | F-01：`unbindMfa:109-121` 在 `Totp.verify` 后加 `advanceCounter(username, counter)`，失败抛 `AUTH-401 "MFA replay rejected"`，再 `clearMfa` |
+| `SsoConfiguration.java` | F-02：改白名单 `Set.of("test","dev")` + 默认拒绝（`activeProfiles.length>0 && allMatch`），`mockEnabled && !mockAllowed` 抛异常 |
+| `AdvancedAuthServiceTest.java` | +1 攻击路径测试 `consumedTotpCannotUnbindMfaButNewTotpCan`；扩写 `productionSsoRejects...`（prod/production/default/dev/test 分支） |
+| `AdvancedAuthEndpointSecurityTest.java` | 现有 unbind 改用 `Totp.generate(secret, counter+1)` 新窗口 code（配套防重放） |
+
+> RR-1~RR-5 已验收逻辑（challenge 4 段 HMAC/JWT_SECRET fail-fast/cert fail-closed/多层 CA）逐行比对未回归。
+
+## 2. 测试检查（独立实测）
+
+```text
+mvn test（全 7 后端模块）-> BUILD SUCCESS，338 测试全绿（0 failures 0 errors）
+  common 40(1 skipped) / gateway 2 / auth 49 / partner 37 / pipeline 122 / quality 35 / billing 53
+auth 48(round2) -> 49(round3, +1 攻击路径测试)；AdvancedAuthServiceTest 11 -> 12
+```
+
+用户"完整回归"声明经独立验证成立。F-01/F-02 为后端 auth 内部改动，前端不受影响。
+
+## 3. 需求满足情况
+
+| 返工项 | 是否满足 | 核查证据 |
+|---|---|---|
+| **F-01** unbindMfa 加 TOTP counter 防重放（P2-1 必修） | **是** | `unbindMfa` 调 `advanceCounter` 并校验返回，与 `completeChallenge:85`/`confirmMfaBinding:105-106` 三点防重放一致；DB 路径 `mfa_enabled=1` 在 unbind 时仍成立（clearMfa 在后）。攻击路径测试：已消费 code 解绑抛 AUTH-401 且 MFA 仍 bound，新 code 解绑成功 |
+| **F-02** SSO mock 不依赖单一 "prod" profile 名（P2-2） | **是** | 白名单 `Set.of("test","dev")` + 默认拒绝；production/prd/默认/空/混合 profile + env 注入一律 fail-fast；test/dev 仍激活 MockSsoAdapter。五分支断言覆盖 |
+
+## 4. 对抗式审查（反例全部反驳，无存活 P1/P2）
+
+- **F-01**：已消费 code 重放解绑 → `advanceCounter` 返回 false 抛 AUTH-401（DB 原子 `WHERE mfa_last_counter<?` + 内存 `synchronized`）；`mfa_enabled=1` 在 unbind 时成立；并发竞态原子拦截；负/溢出 counter 被 `counter<0` 拦截。内存-DB enabled 守卫不一致为**预存在 P3-2**（非本轮引入，对已启用 MFA 的防重放两路径一致）。
+- **F-02**：production/prd/默认/空/混合 profile + `SECURITY_SSO_MOCK_ENABLED=true` → 全部 fail-fast；空 profile 被 `length>0` 前置守卫拦截（不致 allMatch 空真值）；profile 为启动期配置非请求可控。
+
+## 5. 范围与边界
+
+| 检查项 | 结果 |
+|---|---|
+| 敏感文件（.env/证书/k8s-prod） | 未动 ✓ |
+| docs/tasks（rework-3 任务单除外） | 未改 ✓ |
+| 大型依赖 | 无新增 ✓ |
+| 无关重构 | 无 ✓ |
+| 超出 F-01/F-02 | 无 ✓ |
+| 动 RR-1~RR-5 | 未动 ✓ |
+| 既有迁移 V001-V023 | 未改（仅 V024/U024 round2 既有）✓ |
+
+## 6. 审查结论
+
+```text
+✓ 通过（无条件） - F-01/F-02 两项 P2 全部修复，攻击路径覆盖，全量回归 338 测试全绿
+- 无存活 P1；无存活 P2（round 2 的 P2-1/P2-2 本轮消除）
+- RR-1~RR-5 未回归
+- 可提交 + PR + 合并 master
+- G-S01 仍 BLOCKED；本审查通过不代表生产放行
+- P3 项 F-03~F-15 留上线前/专项（任务单 §8.7 明确不纳入本轮）
+```
+
+**重要口径**：G-S01 仍 `BLOCKED`，须 PV-SEC PROD_EQ + 安全负责人复核方可解锁，**不签发正式上线批准**；机构 CRL/OCSP 待真实 CA 联调；A4 真实 IAM/SSO 联调待外部规范。
+
+## 7. 返工任务清单（上线前/专项，P3，不阻断本轮）
+
+无新增返工项。P3 延续清单（F-03 sm4Key 分离 / F-04 requiredMfa enabled 守卫 / F-05 审计时序 / F-06 `/auth/**` 白名单收紧 / F-07 多实例共享存储 / F-08 EdDSA / F-09 死代码 / F-10~F-15）详见完整报告 §10，均留上线前/专项。
+
+## 8. 建议提交信息
+
+```text
+fix(fix-01): security auth rework round 3 - unbind MFA replay guard + SSO mock whitelist
+
+- F-01: unbindMfa now calls advanceCounter after Totp.verify and rejects
+  replayed codes (AUTH-401), aligning with completeChallenge/confirmMfaBinding
+- F-02: SsoConfiguration switches to allow-list (test/dev only) with default
+  deny; blocks mock under production/prd/default/empty/mixed profiles and
+  SECURITY_SSO_MOCK_ENABLED env injection
+- tests: add consumedTotpCannotUnbindMfaButNewTotpCan (attack path), expand SSO
+  profile coverage; adjust existing unbind to fresh counter+1 code
+- verified: mvn test 338 green (0 failures); RR-1~RR-5 untouched
+- G-S01 still BLOCKED (not production approval)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+```
+
+---
+
+**下一步**：fix-01 第三轮返工**通过（无条件）**，**可提交 + PR + 合并 master**。G-S01 仍须 PV-SEC PROD_EQ + 安全负责人复核；A4 真实联调待机构 IAM/SSO 规范；P3 项 F-03~F-15 留上线前/专项；**不签发正式上线批准**。

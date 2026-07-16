@@ -18,8 +18,9 @@ import java.util.Map;
 public class JwtHeaderFilter implements GlobalFilter, Ordered {
     private final JwtUtil jwtUtil;
 
-    public JwtHeaderFilter() {
-        this(new JwtUtil(System.getenv().getOrDefault("JWT_SECRET", "change-me-in-env"), Clock.systemUTC()));
+    public JwtHeaderFilter(@org.springframework.beans.factory.annotation.Value("${security.jwt.secret}")
+            String secret) {
+        this(new JwtUtil(secret, Clock.systemUTC()));
     }
 
     JwtHeaderFilter(JwtUtil jwtUtil) {

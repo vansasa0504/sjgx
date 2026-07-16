@@ -15,6 +15,9 @@ public class JwtUtil {
     private final Clock clock;
 
     public JwtUtil(String secret, Clock clock) {
+        if (secret == null || secret.isBlank() || "change-me-in-env".equals(secret)) {
+            throw new IllegalStateException("security.jwt.secret must be configured securely");
+        }
         this.secret = secret;
         this.clock = clock;
     }

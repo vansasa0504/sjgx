@@ -17,7 +17,7 @@ import org.springframework.core.Ordered;
 public class CommonSecurityConfiguration {
 
     @Bean
-    public JwtUtil jwtUtil(@Value("${security.jwt.secret:change-me-in-env}") String secret) {
+    public JwtUtil jwtUtil(@Value("${security.jwt.secret}") String secret) {
         return new JwtUtil(secret, Clock.systemUTC());
     }
 
